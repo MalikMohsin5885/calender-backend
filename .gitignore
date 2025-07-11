@@ -1,0 +1,57 @@
+# Byte-compiled / optimized / DLL files
+*.py[cod]
+__pycache__/
+
+# C extensions
+*.so
+
+# Django default database
+db.sqlite3
+
+# Logs
+*.log
+
+# Environment variables
+.env
+*.env
+
+# Static and media files (should be collected during deployment)
+staticfiles/
+media/
+
+# Virtual environment
+venv/
+env/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# PyCharm
+*.iml
+
+# Testing / coverage
+.coverage
+coverage.xml
+*.cover
+htmlcov/
+
+# Migrations (optional: keep if you want to track them)
+# Uncomment the following if you DO NOT want to track migrations in Git
+# **/migrations/
+# !**/migrations/__init__.py
+
+# Node dependencies (in case you use frontend tools)
+node_modules/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# System files
+.DS_Store
+Thumbs.db

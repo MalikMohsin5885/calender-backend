@@ -1,0 +1,19 @@
+scripts:
+  server:
+    - python manage.py runserver 8000
+  create_db:
+    - python manage.py create_db
+  makemigrations:
+    - python manage.py makemigrations
+  migrate:
+    - python manage.py migrate
+  seed_db:
+    - python manage.py seed_db
+  freeze_requirements:
+    - uv pip freeze > requirements.txt
+  create_superuser:
+    - python manage.py createsuperuser
+  dir_tree:
+    - tree /F /A | findstr /V "venv"
+  install_requirements:
+    - pip install -r requirements.txt
