@@ -35,7 +35,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             "refresh": str(refresh),
             "access": str(refresh.access_token),
         }
-
+            
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
