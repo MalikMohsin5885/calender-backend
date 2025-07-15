@@ -1,5 +1,3 @@
-# api/views.py
-
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -35,10 +33,9 @@ class MeetingListCreateView(generics.ListCreateAPIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        # Extract and validate member_ids
         member_ids = data.get('member_ids', [])
         if user.id in member_ids:
-            member_ids.remove(user.id)  # remove creator if included
+            member_ids.remove(user.id)
 
         users = list(User.objects.filter(id__in=member_ids))
         found_ids = {u.id for u in users}
@@ -50,7 +47,6 @@ class MeetingListCreateView(generics.ListCreateAPIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Create meeting
         meeting = Meeting.objects.create(
             title=data['title'],
             description=data['description'],
@@ -59,7 +55,6 @@ class MeetingListCreateView(generics.ListCreateAPIView):
             created_by=user
         )
 
-        # Add valid members only (excluding creator)
         MeetingMember.objects.bulk_create([
             MeetingMember(meeting=meeting, user=u) for u in users
         ])

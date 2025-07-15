@@ -4,24 +4,6 @@ from django.contrib.auth import get_user_model, authenticate
 from .models import User, Role 
 
 User = get_user_model()
-
-# class RegisterSerializer(serializers.ModelSerializer):
-#     password = serializers.CharField(write_only=True, min_length=6)
-
-#     class Meta:
-#         model = User
-#         fields = ['id', 'name', 'email', 'password']
-
-#     def create(self, validated_data):
-#         password = validated_data.pop('password', None)
-#         user = User.objects.create(**validated_data)
-#         if password:
-#             user.set_password(password)
-#         user.is_verified = False
-#         user.save()
-#         return user
-    
-
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
     role = serializers.CharField(write_only=True)
@@ -53,10 +35,9 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        email = attrs.get('email', '').lower()  # 🔽 lowercased email
+        email = attrs.get('email', '').lower()
         password = attrs.get('password', '')
 
-        # Use 'username' as key if USERNAME_FIELD = 'email'
         user = authenticate(
             request=self.context.get('request'),
             username=email,
