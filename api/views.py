@@ -1,8 +1,8 @@
+from datetime import datetime
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
 from .models import Meeting, MeetingMember
 from .serializers import MeetingSerializer
 
@@ -15,14 +15,24 @@ class MeetingListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         user_perms = set(user.get_permissions())
+        date_str = self.request.query_params.get("date")
 
+        base_queryset = Meeting.objects.none()
         if 'meeting.view_all_meetings' in user_perms:
-            return Meeting.objects.all()
+            base_queryset = Meeting.objects.all()
         elif 'meeting.view_own_meetings' in user_perms:
-            return Meeting.objects.filter(created_by=user)
+            base_queryset = Meeting.objects.filter(created_by=user)
         elif 'meeting.view_assigned_meetings' in user_perms:
-            return Meeting.objects.filter(memberships__user=user)
-        return Meeting.objects.none()
+            base_queryset = Meeting.objects.filter(memberships__user=user)
+
+        if date_str:
+            try:
+                selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                base_queryset = base_queryset.filter(start_time__date=selected_date)
+            except ValueError:
+                return Meeting.objects.none()
+
+        return base_queryset.select_related('created_by').prefetch_related('memberships__user')
 
     def create(self, request, *args, **kwargs):
         user = request.user
