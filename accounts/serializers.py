@@ -34,6 +34,9 @@ class RegisterSerializer(serializers.ModelSerializer):
         role_name = validated_data.pop('role', None)
         password = validated_data.pop('password', None)
 
+        # 🔽 Lowercase the email
+        validated_data['email'] = validated_data['email'].lower()
+
         try:
             role = Role.objects.get(name__iexact=role_name)
         except Role.DoesNotExist:
@@ -47,27 +50,34 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        email = attrs.get('email', '').lower()
+        email = attrs.get('email', '').lower()  # 🔽 lowercased email
         password = attrs.get('password', '')
 
-        user = authenticate(email=email, password=password)
+        # Use 'username' as key if USERNAME_FIELD = 'email'
+        user = authenticate(
+            request=self.context.get('request'),
+            username=email,
+            password=password
+        )
         if user is None:
             raise serializers.ValidationError("Invalid email or password.")
-        refresh = self.get_token(user)
 
+        refresh = self.get_token(user)
         return {
             "refresh": str(refresh),
             "access": str(refresh.access_token),
         }
-            
+
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
         token["name"] = user.name
         token["email"] = user.email
         return token
+
 
 class UserProfileSerializer(serializers.ModelSerializer):
     role = serializers.CharField(source='role.name', read_only=True)
