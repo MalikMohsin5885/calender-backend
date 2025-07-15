@@ -10,7 +10,7 @@ class Command(BaseCommand):
             conn = psycopg2.connect(
                 dbname="postgres",  # Connect to default database first
                 user="postgres",    # Default PostgreSQL user
-                password="bingchilling161",  # Change this if needed
+                password="Mohsin",  # Change this if needed
                 host="localhost",
                 port="5432"
             )

@@ -1,82 +1,61 @@
-import random
 from django.core.management.base import BaseCommand
-from faker import Faker
-from accounts.models import Company, User
-from api.models import Role, Permission, UserRoles, RolePermissions
-
-fake = Faker()
+from django.contrib.auth import get_user_model
+from accounts.models import Role, Permission
+User = get_user_model()
 
 class Command(BaseCommand):
-    help = "Populate the database with random HRMS-related data"
+    help = "Seed roles, permissions, and a default user"
 
     def handle(self, *args, **kwargs):
-        self.stdout.write(self.style.SUCCESS("Seeding data..."))
+        self.seed_permissions_and_roles()
+        self.seed_default_user()
 
-        # Create Companies
-        companies = []
-        for _ in range(5):  # Creating 5 companies
-            company = Company.objects.create(
-                name=fake.company(),
-                industry=fake.job(),
-                location=fake.city(),
-                email=fake.company_email(),
-                phone=fake.phone_number()
+    def seed_permissions_and_roles(self):
+        self.stdout.write("📌 Seeding permissions and roles...")
+
+        perms = [
+            "meeting.schedule_meeting",
+            "meeting.view_all_meetings",
+            "meeting.view_own_meetings",
+            "meeting.view_assigned_meetings",
+            "meeting.delete_meeting",
+        ]
+
+        # Create permissions
+        for codename in perms:
+            Permission.objects.get_or_create(name=codename)
+
+        # Define roles and their permissions
+        roles_map = {
+            "Supervisor": perms,
+            "BD": ["meeting.schedule_meeting", "meeting.view_own_meetings"],
+            "Member": ["meeting.view_assigned_meetings"],
+        }
+
+        for role_name, role_perms in roles_map.items():
+            role, _ = Role.objects.get_or_create(name=role_name)
+            for codename in role_perms:
+                perm = Permission.objects.get(name=codename)
+                role.permissions.add(perm)
+
+        self.stdout.write(self.style.SUCCESS("✅ Roles and permissions seeded."))
+
+    def seed_default_user(self):
+        self.stdout.write("📌 Seeding default user...")
+
+        email = "malikmohsin8239@gmail.com"
+        name = "malik mohsin"
+        password = "test@123"
+
+        supervisor_role = Role.objects.get(name="Supervisor")
+
+        if not User.objects.filter(email=email).exists():
+            User.objects.create_user(
+                email=email,
+                name=name,
+                password=password,
+                role=supervisor_role
             )
-            companies.append(company)
-
-        self.stdout.write(self.style.SUCCESS(f"Created {len(companies)} companies"))
-
-        # Create Users
-        users = []
-        for _ in range(20):  # Creating 20 users
-            user = User.objects.create_user(
-                email=fake.email(),
-                fname=fake.first_name(),
-                lname=fake.last_name(),
-                phone=fake.phone_number(),
-                password="password123",
-                company=random.choice(companies)
-            )
-            users.append(user)
-
-        self.stdout.write(self.style.SUCCESS(f"Created {len(users)} users"))
-
-        # Create Roles
-        roles = []
-        role_names = ["HR Manager", "Recruiter", "Employee", "HR Admin"]
-        for role_name in role_names:
-            role = Role.objects.create(
-                name=role_name,
-                description=fake.text()
-            )
-            roles.append(role)
-
-        self.stdout.write(self.style.SUCCESS(f"Created {len(roles)} roles"))
-
-        # Create Permissions
-        permissions = []
-        permission_names = ["View Dashboard", "Manage Employees", "Approve Leaves", "Edit Payroll"]
-        for perm_name in permission_names:
-            permission = Permission.objects.create(
-                name=perm_name,
-                description=fake.text()
-            )
-            permissions.append(permission)
-
-        self.stdout.write(self.style.SUCCESS(f"Created {len(permissions)} permissions"))
-
-        # Assign Roles to Users
-        for user in users:
-            role = random.choice(roles)
-            UserRoles.objects.create(user=user, role=role)
-
-        self.stdout.write(self.style.SUCCESS("Assigned roles to users"))
-
-        # Assign Permissions to Roles
-        for role in roles:
-            assigned_perms = random.sample(permissions, k=2)  # Assign 2 random permissions per role
-            for permission in assigned_perms:
-                RolePermissions.objects.get_or_create(role=role, permission=permission)
-
-        self.stdout.write(self.style.SUCCESS("Assigned permissions to roles"))
-        self.stdout.write(self.style.SUCCESS("Seeding completed successfully!"))
+            self.stdout.write(self.style.SUCCESS("✅ Default user 'malik mohsin' created."))
+        else:
+            self.stdout.write(self.style.WARNING("⚠️ User already exists."))
