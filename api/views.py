@@ -4,7 +4,9 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
 from .models import Meeting, MeetingMember
+from accounts.serializers import UserSerializer
 from .serializers import MeetingSerializer
+from accounts.permissions import IsSupervisorOrBD
 
 User = get_user_model()
 
@@ -70,3 +72,8 @@ class MeetingListCreateView(generics.ListCreateAPIView):
         ])
 
         return Response({"message": "Meeting created successfully."}, status=status.HTTP_201_CREATED)
+
+class UsersListView(generics.ListCreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated, IsSupervisorOrBD]
