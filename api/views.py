@@ -30,9 +30,7 @@ class MeetingListCreateView(generics.ListCreateAPIView):
         if date_str:
             try:
                 selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-                base_queryset = base_queryset.filter(date=selected_date)
-
-                
+                base_queryset = base_queryset.filter(date=selected_date)   
             except ValueError:
                 return Meeting.objects.none()
 
@@ -76,6 +74,21 @@ class MeetingListCreateView(generics.ListCreateAPIView):
         ])
 
         return Response({"message": "Meeting created successfully."}, status=status.HTTP_201_CREATED)
+
+class MeetingUpdateView(generics.RetrieveUpdateAPIView):
+    queryset = Meeting.objects.all()
+    serializer_class = MeetingSerializer
+    permission_classes = [IsAuthenticated, IsSupervisorOrBD]
+
+    def get_queryset(self):
+        user = self.request.user
+        perms = set(user.get_permissions())
+        if 'meeting.update_all_meetings' in perms:
+            return Meeting.objects.all()
+        elif 'meeting.update_own_meetings' in perms:
+            return Meeting.objects.filter(created_by=user)
+        else:
+            return Meeting.objects.none()
 
 class UsersListView(generics.ListCreateAPIView):
     serializer_class = UserSerializer

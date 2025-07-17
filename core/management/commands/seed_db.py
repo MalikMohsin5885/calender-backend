@@ -11,7 +11,7 @@ class Command(BaseCommand):
         self.seed_default_user()
 
     def seed_permissions_and_roles(self):
-        self.stdout.write("📌 Seeding permissions and roles...")
+        self.stdout.write("Seeding permissions and roles...")
 
         perms = [
             "meeting.schedule_meeting",
@@ -19,16 +19,20 @@ class Command(BaseCommand):
             "meeting.view_own_meetings",
             "meeting.view_assigned_meetings",
             "meeting.delete_meeting",
+            "meeting.update_all_meetings",
+            "meeting.update_own_meetings",
         ]
 
-        # Create permissions
         for codename in perms:
             Permission.objects.get_or_create(name=codename)
 
-        # Define roles and their permissions
         roles_map = {
             "Supervisor": perms,
-            "BD": ["meeting.schedule_meeting", "meeting.view_own_meetings"],
+            "BD": [
+                "meeting.schedule_meeting",
+                "meeting.view_own_meetings",
+                "meeting.update_own_meetings",
+            ],
             "Member": ["meeting.view_assigned_meetings"],
         }
 
@@ -38,10 +42,10 @@ class Command(BaseCommand):
                 perm = Permission.objects.get(name=codename)
                 role.permissions.add(perm)
 
-        self.stdout.write(self.style.SUCCESS("✅ Roles and permissions seeded."))
+        self.stdout.write(self.style.SUCCESS("Roles and permissions seeded."))
 
     def seed_default_user(self):
-        self.stdout.write("📌 Seeding default user...")
+        self.stdout.write("Seeding default user...")
 
         email = "malikmohsin8239@gmail.com"
         name = "malik mohsin"
@@ -56,6 +60,6 @@ class Command(BaseCommand):
                 password=password,
                 role=supervisor_role
             )
-            self.stdout.write(self.style.SUCCESS("✅ Default user 'malik mohsin' created."))
+            self.stdout.write(self.style.SUCCESS("Default user 'malik mohsin' created."))
         else:
-            self.stdout.write(self.style.WARNING("⚠️ User already exists."))
+            self.stdout.write(self.style.WARNING("User already exists."))
