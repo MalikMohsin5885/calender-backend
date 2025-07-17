@@ -5,8 +5,9 @@ class Meeting(models.Model):
     id = models.AutoField(primary_key=True)
     title = models.CharField(max_length=150)
     description = models.TextField()
-    start_time = models.DateTimeField()
-    end_time = models.DateTimeField()
+    date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

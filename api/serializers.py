@@ -15,9 +15,10 @@ class MeetingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Meeting
-        fields = ['id', 'title', 'description', 'start_time', 'end_time', 'created_by', 'members', 'member_ids']
+        fields = ['id', 'title', 'description', 'date', 'start_time', 'end_time', 'created_by', 'members', 'member_ids']
         read_only_fields = ['id', 'created_by', 'members']
 
     def get_members(self, obj):
         members = User.objects.filter(meeting_participations__meeting=obj)
         return MemberSerializer(members, many=True).data
+

@@ -30,7 +30,9 @@ class MeetingListCreateView(generics.ListCreateAPIView):
         if date_str:
             try:
                 selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-                base_queryset = base_queryset.filter(start_time__date=selected_date)
+                base_queryset = base_queryset.filter(date=selected_date)
+
+                
             except ValueError:
                 return Meeting.objects.none()
 
@@ -62,10 +64,12 @@ class MeetingListCreateView(generics.ListCreateAPIView):
         meeting = Meeting.objects.create(
             title=data['title'],
             description=data['description'],
+            date=data['date'],
             start_time=data['start_time'],
             end_time=data['end_time'],
             created_by=user
         )
+
 
         MeetingMember.objects.bulk_create([
             MeetingMember(meeting=meeting, user=u) for u in users
@@ -74,6 +78,8 @@ class MeetingListCreateView(generics.ListCreateAPIView):
         return Response({"message": "Meeting created successfully."}, status=status.HTTP_201_CREATED)
 
 class UsersListView(generics.ListCreateAPIView):
-    queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsSupervisorOrBD]
+    
+    def get_queryset(self):
+        return User.objects.exclude(id=self.request.user.id)
