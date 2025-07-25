@@ -36,7 +36,7 @@ class Command(BaseCommand):
                 "meeting.view_own_meetings",
                 "meeting.update_own_meetings",
             ],
-            "Member": ["meeting.view_assigned_meetings"],
+            "Closer": ["meeting.view_assigned_meetings"],
         }
 
         for role_name, role_perms in roles_map.items():
