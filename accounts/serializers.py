@@ -1,33 +1,50 @@
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
-from .models import User, Role 
+from .models import User, Role, Department 
 
 User = get_user_model()
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
     role = serializers.CharField(write_only=True)
+    department_id = serializers.IntegerField(write_only=True)
+    supervisor_id = serializers.IntegerField(required=False, allow_null=True)
+    priority = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'email', 'password', 'role']
+        fields = ['id', 'name', 'email', 'password', 'role', 'department_id', 'supervisor_id', 'priority']
 
     def create(self, validated_data):
-        role_name = validated_data.pop('role', None)
-        password = validated_data.pop('password', None)
-
-        # 🔽 Lowercase the email
-        validated_data['email'] = validated_data['email'].lower()
+        role_name = validated_data.pop('role')
+        department_id = validated_data.pop('department_id')
+        supervisor_id = validated_data.pop('supervisor_id', None)
+        password = validated_data.pop('password')
 
         try:
             role = Role.objects.get(name__iexact=role_name)
         except Role.DoesNotExist:
-            raise serializers.ValidationError({"role": "Invalid role"})
+            raise serializers.ValidationError({"role": "Invalid role name"})
 
-        user = User(**validated_data)
-        if password:
-            user.set_password(password)
-        user.role = role
+        try:
+            department = Department.objects.get(id=department_id)
+        except Department.DoesNotExist:
+            raise serializers.ValidationError({"department_id": "Invalid department ID"})
+
+        supervisor = None
+        if supervisor_id is not None:
+            try:
+                supervisor = User.objects.get(id=supervisor_id)
+            except User.DoesNotExist:
+                raise serializers.ValidationError({"supervisor_id": "Invalid supervisor ID"})
+
+        user = User(
+            role=role,
+            department=department,
+            supervisor=supervisor,
+            **validated_data
+        )
+        user.set_password(password)
         user.save()
         return user
 

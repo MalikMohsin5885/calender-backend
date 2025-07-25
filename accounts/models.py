@@ -1,5 +1,13 @@
 from django.db import models
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+
+
+class Role(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    permissions = models.ManyToManyField('Permission', related_name='roles')
+
+    def __str__(self):
+        return self.name
 
 
 class Permission(models.Model):
@@ -9,69 +17,54 @@ class Permission(models.Model):
         return self.name
 
 
-class Role(models.Model):
-    name = models.CharField(max_length=50, unique=True)
-    permissions = models.ManyToManyField(Permission, through='RolePermission', related_name='roles')
+class Department(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
 
 
-class RolePermission(models.Model):
-    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name='role_permissions')
-    permission = models.ForeignKey(Permission, on_delete=models.CASCADE, related_name='permission_roles')
-
-    class Meta:
-        unique_together = ('role', 'permission')
-
-
 class UserManager(BaseUserManager):
-    def create_user(self, email, name, password=None, role=None):
+    def create_user(self, email, name, password=None, **extra_fields):
         if not email:
-            raise ValueError("Users must have an email address")
-        user = self.model(
-            email=self.normalize_email(email),
-            name=name,
-            role=role
-        )
+            raise ValueError("Email is required")
+        email = self.normalize_email(email)
+        user = self.model(email=email, name=name, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, name, password=None, role=None):
-        user = self.create_user(email=email, name=name, password=password, role=role)
-        user.is_superuser = True
-        user.is_staff = True
-        user.save(using=self._db)
-        return user
+    def create_superuser(self, email, name, password=None, **extra_fields):
+        extra_fields.setdefault("is_superuser", True)
+        return self.create_user(email, name, password, **extra_fields)
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
     password = models.CharField(max_length=255)
-    role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, related_name='users')
-    created_at = models.DateTimeField(auto_now_add=True)
-
+    role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True)
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True)
+    supervisor = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True)
     is_active = models.BooleanField(default=True)
-    is_staff = models.BooleanField(default=False)
-
-    objects = UserManager()
+    priority = models.IntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['name']
 
+    objects = UserManager()
+
     def __str__(self):
         return self.name
-
+    
+    @property
     def get_permissions(self):
         if self.role:
-            return [p.name for p in self.role.permissions.all()]
-        return []
+            return set(p.name for p in self.role.permissions.all())
+        return set()
 
-    def get_roles_with_permissions(self):
-        return {
-            "role": self.role.name if self.role else None,
-            "permissions": self.get_permissions()
-        }
+    def has_permission(self, perm_name):
+        return perm_name in self.get_permissions
+

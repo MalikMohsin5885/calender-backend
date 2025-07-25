@@ -1,12 +1,14 @@
-from datetime import datetime
-from rest_framework import generics, status
+from rest_framework import generics, status, serializers
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth import get_user_model
-from .models import Meeting, MeetingMember
-from accounts.serializers import UserSerializer
+from django.db.models import Max
+from .models import Meeting, MeetingParticipant
 from .serializers import MeetingSerializer
 from accounts.permissions import IsSupervisorOrBD
+from django.contrib.auth import get_user_model
+from django.utils.dateparse import parse_date
+
+from accounts.serializers import UserSerializer
 
 User = get_user_model()
 
@@ -16,83 +18,79 @@ class MeetingListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        user_perms = set(user.get_permissions())
-        date_str = self.request.query_params.get("date")
+        date_param = self.request.query_params.get('date')
+        queryset = Meeting.objects.all()
 
-        base_queryset = Meeting.objects.none()
-        if 'meeting.view_all_meetings' in user_perms:
-            base_queryset = Meeting.objects.all()
-        elif 'meeting.view_own_meetings' in user_perms:
-            base_queryset = Meeting.objects.filter(created_by=user)
-        elif 'meeting.view_assigned_meetings' in user_perms:
-            base_queryset = Meeting.objects.filter(memberships__user=user)
-
-        if date_str:
+        # Filter by date if provided
+        if date_param:
             try:
-                selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-                base_queryset = base_queryset.filter(date=selected_date)   
+                date = parse_date(date_param)
+                if date:
+                    queryset = queryset.filter(start_time__date=date)
             except ValueError:
-                return Meeting.objects.none()
+                pass  # ignore invalid date formats
 
-        return base_queryset.select_related('created_by').prefetch_related('memberships__user')
+        if user.has_permission("meeting.view_all_meetings"):
+            print("User has permission to view all meetings")
+            return queryset
+        elif user.has_permission("meeting.view_own_meetings"):
+            print("User has permission to view own meetings")
+            return queryset.filter(created_by=user)
+        elif user.has_permission("meeting.view_assigned_meetings"):
+            print("User has permission to view assigned meetings")
+            return queryset.filter(participants__user=user, participants__is_active=True)
 
-    def create(self, request, *args, **kwargs):
-        user = request.user
-        if 'meeting.schedule_meeting' not in user.get_permissions():
-            return Response({"detail": "You do not have permission to schedule meetings."}, status=403)
+        return Meeting.objects.none()
 
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
-        member_ids = data.get('member_ids', [])
-        if user.id in member_ids:
-            member_ids.remove(user.id)
-
-        users = list(User.objects.filter(id__in=member_ids))
-        found_ids = {u.id for u in users}
-        missing_ids = set(member_ids) - found_ids
-
-        if missing_ids:
-            return Response(
-                {"error": f"User(s) with ID(s) {list(missing_ids)} not found."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        meeting = Meeting.objects.create(
-            title=data['title'],
-            description=data['description'],
-            date=data['date'],
-            start_time=data['start_time'],
-            end_time=data['end_time'],
-            created_by=user
-        )
-
-
-        MeetingMember.objects.bulk_create([
-            MeetingMember(meeting=meeting, user=u) for u in users
-        ])
-
-        return Response({"message": "Meeting created successfully."}, status=status.HTTP_201_CREATED)
 
 class MeetingUpdateView(generics.RetrieveUpdateAPIView):
     queryset = Meeting.objects.all()
     serializer_class = MeetingSerializer
     permission_classes = [IsAuthenticated, IsSupervisorOrBD]
 
-    def get_queryset(self):
-        user = self.request.user
-        perms = set(user.get_permissions())
-        if 'meeting.update_all_meetings' in perms:
-            return Meeting.objects.all()
-        elif 'meeting.update_own_meetings' in perms:
-            return Meeting.objects.filter(created_by=user)
-        else:
-            return Meeting.objects.none()
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        data = request.data
+        to_ids = data.get('to_ids', [])
+        cc_ids = data.get('cc_ids', [])
+        all_ids = list(set(to_ids + cc_ids))
 
-class UsersListView(generics.ListCreateAPIView):
-    serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated, IsSupervisorOrBD]
+        users = User.objects.filter(id__in=all_ids)
+        found_ids = {u.id for u in users}
+        missing_ids = set(all_ids) - found_ids
+        if missing_ids:
+            return Response({"error": f"User(s) {missing_ids} not found."}, status=400)
+
+        # Deactivate previous participants
+        MeetingParticipant.objects.filter(meeting=instance, is_active=True).update(is_active=False)
+
+        # Determine version
+        max_version = MeetingParticipant.objects.filter(meeting=instance).aggregate(Max('version'))['version__max'] or 0
+        new_version = max_version + 1
+
+        # Create new participant entries
+        MeetingParticipant.objects.bulk_create([
+            MeetingParticipant(
+                meeting=instance,
+                user=u,
+                is_to=(u.id in to_ids),
+                version=new_version,
+                is_active=True,
+                updated_by=request.user
+            ) for u in users
+        ])
+
+        # Update meeting core fields
+        return super().update(request, *args, **kwargs)
     
-    def get_queryset(self):
-        return User.objects.exclude(id=self.request.user.id)
+    
+
+User = get_user_model()
+
+class UsersListView(generics.ListAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]

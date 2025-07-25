@@ -1,13 +1,16 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
-from accounts.models import Role, Permission
+from accounts.models import Role, Permission, Department
+
 User = get_user_model()
 
+
 class Command(BaseCommand):
-    help = "Seed roles, permissions, and a default user"
+    help = "Seed roles, permissions, departments, and a default user"
 
     def handle(self, *args, **kwargs):
         self.seed_permissions_and_roles()
+        self.seed_departments()
         self.seed_default_user()
 
     def seed_permissions_and_roles(self):
@@ -44,22 +47,44 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("Roles and permissions seeded."))
 
+    def seed_departments(self):
+        self.stdout.write("Seeding departments...")
+
+        departments = [
+            "Machine Learning",
+            "Data Engineering",
+            "Artificial Intelligence",
+            "Dev",
+            "BD",
+        ]
+
+        for dept_name in departments:
+            Department.objects.get_or_create(name=dept_name)
+
+        self.stdout.write(self.style.SUCCESS("Departments seeded."))
+
     def seed_default_user(self):
         self.stdout.write("Seeding default user...")
 
-        email = "malikmohsin8239@gmail.com"
-        name = "malik mohsin"
+        email = "moshin@gmail.com"
+        name = "Mohsin"
         password = "test@123"
 
-        supervisor_role = Role.objects.get(name="Supervisor")
+        try:
+            supervisor_role = Role.objects.get(name="Supervisor")
+            ml_department = Department.objects.get(name="Machine Learning")
+        except (Role.DoesNotExist, Department.DoesNotExist) as e:
+            self.stdout.write(self.style.ERROR(f"Missing required role/department: {e}"))
+            return
 
         if not User.objects.filter(email=email).exists():
             User.objects.create_user(
                 email=email,
                 name=name,
                 password=password,
-                role=supervisor_role
+                role=supervisor_role,
+                department=ml_department,
             )
-            self.stdout.write(self.style.SUCCESS("Default user 'malik mohsin' created."))
+            self.stdout.write(self.style.SUCCESS("Default user 'Mohsin' created."))
         else:
             self.stdout.write(self.style.WARNING("User already exists."))
