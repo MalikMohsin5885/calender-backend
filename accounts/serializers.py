@@ -6,30 +6,38 @@ from .models import User, Role, Department
 User = get_user_model()
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
-    role = serializers.CharField(write_only=True)
+    role_id = serializers.IntegerField(write_only=True)
     department_id = serializers.IntegerField(write_only=True)
     supervisor_id = serializers.IntegerField(required=False, allow_null=True)
     priority = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'email', 'password', 'role', 'department_id', 'supervisor_id', 'priority']
+        fields = ['id', 'name', 'email', 'password', 'role_id', 'department_id', 'supervisor_id', 'priority']
 
     def create(self, validated_data):
-        role_name = validated_data.pop('role')
+        role_id = validated_data.pop('role_id')
         department_id = validated_data.pop('department_id')
         supervisor_id = validated_data.pop('supervisor_id', None)
         password = validated_data.pop('password')
 
         try:
-            role = Role.objects.get(name__iexact=role_name)
+            role = Role.objects.get(id=role_id)
         except Role.DoesNotExist:
-            raise serializers.ValidationError({"role": "Invalid role name"})
-
+            raise serializers.ValidationError({"role_id": "Invalid role ID"})
+        
         try:
-            department = Department.objects.get(id=department_id)
+            if role.name == 'BD':
+                department, _ = Department.objects.get_or_create(name='BD')
+            else:
+                department = Department.objects.get(id=department_id)
+                if department.name == 'Business Development':
+                    raise serializers.ValidationError(
+                        {"department_id": "Only BD role can have the Business Development department"}
+                    )
         except Department.DoesNotExist:
             raise serializers.ValidationError({"department_id": "Invalid department ID"})
+
 
         supervisor = None
         if supervisor_id is not None:

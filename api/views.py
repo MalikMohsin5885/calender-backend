@@ -44,6 +44,15 @@ class MeetingListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+        
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(
+            {"detail": "Meeting created successfully."},
+            status=status.HTTP_201_CREATED
+        )
 
 
 class MeetingUpdateView(generics.RetrieveUpdateAPIView):
