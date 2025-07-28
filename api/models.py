@@ -2,12 +2,16 @@ from django.db import models
 from django.conf import settings
 
 
+from django.db import models
+from django.conf import settings
+
 class Meeting(models.Model):
     title = models.CharField(max_length=150)
     description = models.TextField()
-    start_time = models.DateTimeField()
-    end_time = models.DateTimeField()
-    meeting_type = models.CharField(max_length=50)  # e.g., W2, Contract, 10.99
+    date = models.DateField()  # <-- new field
+    start_time = models.TimeField()  # <-- changed
+    end_time = models.TimeField()    # <-- changed
+    meeting_type = models.CharField(max_length=50)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

@@ -21,38 +21,32 @@ class MeetingListCreateView(generics.ListCreateAPIView):
         date_param = self.request.query_params.get('date')
         queryset = Meeting.objects.all()
 
-        # Filter by date if provided
+        # Filter by meeting.date instead of start_time__date
         if date_param:
             try:
                 date = parse_date(date_param)
                 if date:
-                    queryset = queryset.filter(start_time__date=date)
+                    queryset = queryset.filter(date=date)
             except ValueError:
-                pass  # ignore invalid date formats
+                pass
 
         if user.has_permission("meeting.view_all_meetings"):
-            print("User has permission to view all meetings")
             return queryset
         elif user.has_permission("meeting.view_own_meetings"):
-            print("User has permission to view own meetings")
             return queryset.filter(created_by=user)
         elif user.has_permission("meeting.view_assigned_meetings"):
-            print("User has permission to view assigned meetings")
             return queryset.filter(participants__user=user, participants__is_active=True)
 
         return Meeting.objects.none()
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
-        
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        return Response(
-            {"detail": "Meeting created successfully."},
-            status=status.HTTP_201_CREATED
-        )
+        return Response({"detail": "Meeting created successfully."}, status=status.HTTP_201_CREATED)
 
 
 class MeetingUpdateView(generics.RetrieveUpdateAPIView):

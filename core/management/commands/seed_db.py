@@ -66,7 +66,7 @@ class Command(BaseCommand):
     def seed_default_user(self):
         self.stdout.write("Seeding default user...")
 
-        email = "moshin@gmail.com"
+        email = "mohsin@gmail.com"
         name = "Mohsin"
         password = "test@123"
 
