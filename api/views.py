@@ -95,7 +95,7 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
 User = get_user_model()
 
 class DepartmentAndUsersView(APIView):
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         # Fetch all departments
