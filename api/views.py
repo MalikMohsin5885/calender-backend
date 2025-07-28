@@ -7,8 +7,9 @@ from .serializers import MeetingSerializer
 from accounts.permissions import IsSupervisorOrBD
 from django.contrib.auth import get_user_model
 from django.utils.dateparse import parse_date
-
-from accounts.serializers import UserSerializer
+from accounts.models import Department, User, Role
+from accounts.serializers import DepartmentSimpleSerializer, UserSimpleSerializer
+from rest_framework.views import APIView
 
 User = get_user_model()
 
@@ -93,7 +94,19 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
 
 User = get_user_model()
 
-class UsersListView(generics.ListAPIView):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
+class DepartmentAndUsersView(APIView):
+    # permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Fetch all departments
+        departments = Department.objects.all().only('id', 'name')
+        department_data = DepartmentSimpleSerializer(departments, many=True).data
+
+        # Fetch users with role 'Closer'
+        closer_users = User.objects.filter(role__name='Closer').only('id', 'name', 'email')
+        user_data = UserSimpleSerializer(closer_users, many=True).data
+
+        return Response({
+            "departments": department_data,
+            "closers": user_data
+        })

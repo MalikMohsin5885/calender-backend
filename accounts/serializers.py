@@ -91,7 +91,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'name', 'email', 'role']
 
-class UserSerializer(serializers.ModelSerializer):
+class DepartmentSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Department
+        fields = ['id', 'name']
+
+class UserSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'name']
+        fields = ['id', 'name', 'email']
