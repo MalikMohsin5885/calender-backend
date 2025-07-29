@@ -87,14 +87,17 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     role = serializers.CharField(source='role.name', read_only=True)
+    department = serializers.CharField(source='department.name', read_only=True)
     class Meta:
         model = User
-        fields = ['id', 'name', 'email', 'role']
+        fields = ['id', 'name', 'email', 'role', 'department']
+
 
 class DepartmentSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
         fields = ['id', 'name']
+
 
 class UserSimpleSerializer(serializers.ModelSerializer):
     class Meta:

@@ -40,7 +40,7 @@ class MeetingParticipant(models.Model):
         on_delete=models.CASCADE,
         related_name='meeting_participations'
     )
-    is_to = models.BooleanField(default=True)  # True=To, False=CC
+    is_to = models.BooleanField(default=True)
     version = models.IntegerField()
     is_active = models.BooleanField(default=True)
     updated_by = models.ForeignKey(
@@ -53,3 +53,11 @@ class MeetingParticipant(models.Model):
 
     def __str__(self):
         return f"{self.user.name} → {self.meeting.title} (v{self.version})"
+
+
+
+class MeetingRemark(models.Model):
+    meeting = models.ForeignKey(Meeting, on_delete=models.CASCADE)
+    remarks = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)

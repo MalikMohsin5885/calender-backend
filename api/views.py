@@ -98,15 +98,17 @@ class DepartmentAndUsersView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Fetch all departments
         departments = Department.objects.all().only('id', 'name')
         department_data = DepartmentSimpleSerializer(departments, many=True).data
 
-        # Fetch users with role 'Closer'
         closer_users = User.objects.filter(role__name='Closer').only('id', 'name', 'email')
-        user_data = UserSimpleSerializer(closer_users, many=True).data
+        closers_data = UserSimpleSerializer(closer_users, many=True).data
+
+        all_users = User.objects.all().only('id', 'name', 'email')
+        all_users_data = UserSimpleSerializer(all_users, many=True).data
 
         return Response({
             "departments": department_data,
-            "closers": user_data
+            "closers": closers_data,
+            "all_users": all_users_data
         })

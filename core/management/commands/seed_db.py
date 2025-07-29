@@ -31,6 +31,11 @@ class Command(BaseCommand):
 
         roles_map = {
             "Supervisor": perms,
+            "BD_Supervisor": [
+                "meeting.schedule_meeting",
+                "meeting.view_assigned_meetings",
+                "meeting.update_own_meetings",
+            ],
             "BD": [
                 "meeting.schedule_meeting",
                 "meeting.view_own_meetings",
