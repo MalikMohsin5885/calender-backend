@@ -20,7 +20,7 @@ class MeetingSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'description', 'date', 'start_time', 'end_time',
             'meeting_type', 'department', 'created_by', 'created_at',
-            'participants', 'to_id', 'cc_ids'
+            'participants', 'to_id', 'cc_ids', 'remarks', 'jd_link', 'resume_link'
         ]
         read_only_fields = ['id', 'created_by', 'created_at', 'participants']
 
@@ -41,11 +41,17 @@ class MeetingSerializer(serializers.ModelSerializer):
         to_id = validated_data.pop('to_id', None)
         cc_ids = validated_data.pop('cc_ids', [])
 
-        meeting = Meeting.objects.create(**validated_data)
+        # Step 1: Validate users BEFORE creating the meeting
+        all_ids = set(filter(None, [to_id] + cc_ids))  # Filter out None values
+        users = User.objects.filter(id__in=all_ids)
+        found_ids = {u.id for u in users}
+        missing_ids = all_ids - found_ids
+        if missing_ids:
+            raise serializers.ValidationError({"detail": f"User(s) {missing_ids} not found."})
 
-        # --- Auto assign logic remains same ---
-        dept_users = User.objects.filter(department=meeting.department, priority__isnull=False).order_by('priority')
+        # Step 2: Auto-assign logic if to_id is not given
         if not to_id:
+            dept_users = User.objects.filter(department=validated_data['department'], priority__isnull=False).order_by('priority')
             if not dept_users.exists():
                 raise serializers.ValidationError({"detail": "No users found in department to assign as 'to'."})
             to_user = dept_users.first()
@@ -54,26 +60,34 @@ class MeetingSerializer(serializers.ModelSerializer):
             if to_user.supervisor and to_user.supervisor.id != to_user.id:
                 cc_ids.append(to_user.supervisor.id)
 
-        # Validate users
-        all_ids = set([to_id] + cc_ids)
-        users = User.objects.filter(id__in=all_ids)
-        found_ids = {u.id for u in users}
-        missing_ids = all_ids - found_ids
-        if missing_ids:
-            raise serializers.ValidationError({"detail": f"User(s) {missing_ids} not found."})
+            # Re-validate with new cc_ids if necessary
+            all_ids = set(filter(None, [to_id] + cc_ids))
+            users = User.objects.filter(id__in=all_ids)
+            found_ids = {u.id for u in users}
+            missing_ids = all_ids - found_ids
+            if missing_ids:
+                raise serializers.ValidationError({"detail": f"User(s) {missing_ids} not found after auto-assign."})
 
+        # Step 3: Now that validation is done, create the meeting
+        meeting = Meeting.objects.create(**validated_data)
+
+        # Step 4: Create participants (with versioning)
         max_version = MeetingParticipant.objects.filter(meeting=meeting).aggregate(max=Max('version'))['max'] or 0
         new_version = max_version + 1
 
+        # To participant
+        to_user = User.objects.get(id=to_id)
         MeetingParticipant.objects.create(
             meeting=meeting,
-            user=User.objects.get(id=to_id),
+            user=to_user,
             is_to=True,
             version=new_version,
             is_active=True,
             updated_by=request.user
         )
 
+        # CC participants
+        cc_users = [u for u in users if u.id in cc_ids]
         MeetingParticipant.objects.bulk_create([
             MeetingParticipant(
                 meeting=meeting,
@@ -83,7 +97,6 @@ class MeetingSerializer(serializers.ModelSerializer):
                 is_active=True,
                 updated_by=request.user
             )
-            for user in users if user.id in cc_ids
+            for user in cc_users
         ])
-
         return meeting
