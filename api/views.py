@@ -4,11 +4,11 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Max
 from .models import Meeting, MeetingParticipant
 from .serializers import MeetingSerializer
-from accounts.permissions import IsSupervisorOrBD
+from accounts.permissions import IsSupervisorOrBD, IsSupervisor
 from django.contrib.auth import get_user_model
 from django.utils.dateparse import parse_date
 from accounts.models import Department, User, Role
-from accounts.serializers import DepartmentSimpleSerializer, UserSimpleSerializer
+from accounts.serializers import DepartmentSimpleSerializer, UserSimpleSerializer, UserListUpdateCreateSerializer
 from rest_framework.views import APIView
 
 User = get_user_model()
@@ -112,3 +112,31 @@ class DepartmentAndUsersView(APIView):
             "closers": closers_data,
             "all_users": all_users_data
         })
+        
+        
+class UserListCreateUpdateView(APIView):
+    permission_classes = [IsAuthenticated, IsSupervisor]
+
+    def get(self, request):
+        users = User.objects.all()
+        serializer = UserListUpdateCreateSerializer(users, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        serializer = UserListUpdateCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"detail": "User created successfully."}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, pk):
+        try:
+            user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = UserListUpdateCreateSerializer(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"detail": "User updated successfully.", "data": serializer.data}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

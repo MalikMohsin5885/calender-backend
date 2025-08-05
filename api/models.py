@@ -29,7 +29,6 @@ class Meeting(models.Model):
     remarks = models.TextField(blank=True, null=True, help_text="General meeting remarks from any participant")
     jd_link = models.URLField(blank=True, null=True, help_text="Link to job description or job board")
     resume_link = models.URLField(blank=True, null=True, help_text="Link to resume or document")
-
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -46,7 +45,7 @@ class MeetingParticipant(models.Model):
         on_delete=models.CASCADE,
         related_name='meeting_participations'
     )
-    is_to = models.BooleanField(default=True)  # True=To, False=CC
+    is_to = models.BooleanField(default=True)
     version = models.IntegerField()
     is_active = models.BooleanField(default=True)
     updated_by = models.ForeignKey(
@@ -59,3 +58,5 @@ class MeetingParticipant(models.Model):
 
     def __str__(self):
         return f"{self.user.name} → {self.meeting.title} (v{self.version})"
+
+
