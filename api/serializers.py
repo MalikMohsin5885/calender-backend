@@ -4,37 +4,40 @@ from django.contrib.auth import get_user_model
 from django.db.models import Max
 
 User = get_user_model()
-
 class MemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'name', 'email']
 
+class MeetingParticipantSerializer(serializers.ModelSerializer):
+    user = MemberSerializer()
+
+    class Meta:
+        model = MeetingParticipant
+        fields = ['user', 'is_to', 'version', 'updated_by']
+
 class MeetingSerializer(serializers.ModelSerializer):
-    participants = serializers.SerializerMethodField(read_only=True)
-    to_id = serializers.IntegerField(write_only=True, required=False)
-    cc_ids = serializers.ListField(write_only=True, child=serializers.IntegerField(), required=False)
+    to_participant = serializers.SerializerMethodField()
+    other_participants = serializers.SerializerMethodField()
 
     class Meta:
         model = Meeting
         fields = [
             'id', 'title', 'description', 'date', 'start_time', 'end_time',
             'meeting_type', 'department', 'created_by', 'created_at',
-            'participants', 'to_id', 'cc_ids', 'remarks', 'jd_link', 'resume_link'
+            'to_participant', 'other_participants',
+            'remarks', 'jd_link', 'resume_link'
         ]
-        read_only_fields = ['id', 'created_by', 'created_at', 'participants']
 
-    def get_participants(self, obj):
-        active_participants = obj.participants.filter(is_active=True)
-        return [
-            {
-                'user': MemberSerializer(p.user).data,
-                'is_to': p.is_to,
-                'version': p.version,
-                'updated_by': p.updated_by.name if p.updated_by else None
-            }
-            for p in active_participants
-        ]
+    def get_to_participant(self, obj):
+        to_part = obj.participants.filter(is_to=True).first()
+        if to_part:
+            return MeetingParticipantSerializer(to_part).data
+        return None
+
+    def get_other_participants(self, obj):
+        others = obj.participants.filter(is_to=False)
+        return MeetingParticipantSerializer(others, many=True).data
 
     def create(self, validated_data):
         request = self.context['request']
