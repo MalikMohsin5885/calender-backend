@@ -58,41 +58,59 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         data = request.data
-        to_ids = data.get('to_ids', [])
-        cc_ids = data.get('cc_ids', [])
-        all_ids = list(set(to_ids + cc_ids))
 
+        to_id = data.get("to_id")
+        cc_ids = data.get("cc_ids", [])
+
+        if not isinstance(cc_ids, list):
+            return Response({"detail": "cc_ids must be a list."}, status=400)
+
+        all_ids = list(set([to_id] + cc_ids)) if to_id else cc_ids
         users = User.objects.filter(id__in=all_ids)
         found_ids = {u.id for u in users}
         missing_ids = set(all_ids) - found_ids
-        if missing_ids:
-            return Response({"error": f"User(s) {missing_ids} not found."}, status=400)
 
-        # Deactivate previous participants
+        if missing_ids:
+            return Response({"detail": f"User(s) {missing_ids} not found."}, status=400)
+
+        # Deactivate current active participants
         MeetingParticipant.objects.filter(meeting=instance, is_active=True).update(is_active=False)
 
-        # Determine version
-        max_version = MeetingParticipant.objects.filter(meeting=instance).aggregate(Max('version'))['version__max'] or 0
+        # Determine new version
+        max_version = MeetingParticipant.objects.filter(meeting=instance).aggregate(Max("version"))["version__max"] or 0
         new_version = max_version + 1
 
-        # Create new participant entries
-        MeetingParticipant.objects.bulk_create([
-            MeetingParticipant(
+        # Create new participant records
+        to_user = User.objects.get(id=to_id) if to_id else None
+        participants = []
+
+        if to_user:
+            participants.append(MeetingParticipant(
                 meeting=instance,
-                user=u,
-                is_to=(u.id in to_ids),
+                user=to_user,
+                is_to=True,
                 version=new_version,
                 is_active=True,
                 updated_by=request.user
-            ) for u in users
-        ])
+            ))
 
-        # Update meeting core fields
+        cc_users = [u for u in users if u.id in cc_ids]
+        for user in cc_users:
+            participants.append(MeetingParticipant(
+                meeting=instance,
+                user=user,
+                is_to=False,
+                version=new_version,
+                is_active=True,
+                updated_by=request.user
+            ))
+
+        MeetingParticipant.objects.bulk_create(participants)
+
+        # Update meeting fields (like title, description, etc.)
         return super().update(request, *args, **kwargs)
-    
-    
 
-User = get_user_model()
+
 
 class DepartmentAndUsersView(APIView):
     permission_classes = [IsAuthenticated]

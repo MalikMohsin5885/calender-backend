@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import Max
 
 User = get_user_model()
+
 class MemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -20,23 +21,31 @@ class MeetingSerializer(serializers.ModelSerializer):
     to_participant = serializers.SerializerMethodField()
     other_participants = serializers.SerializerMethodField()
 
+    # Make created_by read-only (so it's not required in request body)
+    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    # Add these fields to support participant logic in the request body
+    to_id = serializers.IntegerField(write_only=True, required=False)
+    cc_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+
     class Meta:
         model = Meeting
         fields = [
             'id', 'title', 'description', 'date', 'start_time', 'end_time',
             'meeting_type', 'department', 'created_by', 'created_at',
             'to_participant', 'other_participants',
-            'remarks', 'jd_link', 'resume_link'
+            'remarks', 'jd_link', 'resume_link',
+            'to_id', 'cc_ids',  # Include these in serializer for input
         ]
 
     def get_to_participant(self, obj):
-        to_part = obj.participants.filter(is_to=True).first()
+        to_part = obj.participants.filter(is_to=True, is_active=True).first()
         if to_part:
             return MeetingParticipantSerializer(to_part).data
         return None
 
     def get_other_participants(self, obj):
-        others = obj.participants.filter(is_to=False)
+        others = obj.participants.filter(is_to=False, is_active=True)
         return MeetingParticipantSerializer(others, many=True).data
 
     def create(self, validated_data):
@@ -44,15 +53,16 @@ class MeetingSerializer(serializers.ModelSerializer):
         to_id = validated_data.pop('to_id', None)
         cc_ids = validated_data.pop('cc_ids', [])
 
-        # Step 1: Validate users BEFORE creating the meeting
-        all_ids = set(filter(None, [to_id] + cc_ids))  # Filter out None values
+        # Set authenticated user as creator
+        validated_data['created_by'] = request.user
+
+        all_ids = set(filter(None, [to_id] + cc_ids))
         users = User.objects.filter(id__in=all_ids)
         found_ids = {u.id for u in users}
         missing_ids = all_ids - found_ids
         if missing_ids:
             raise serializers.ValidationError({"detail": f"User(s) {missing_ids} not found."})
 
-        # Step 2: Auto-assign logic if to_id is not given
         if not to_id:
             dept_users = User.objects.filter(department=validated_data['department'], priority__isnull=False).order_by('priority')
             if not dept_users.exists():
@@ -63,7 +73,6 @@ class MeetingSerializer(serializers.ModelSerializer):
             if to_user.supervisor and to_user.supervisor.id != to_user.id:
                 cc_ids.append(to_user.supervisor.id)
 
-            # Re-validate with new cc_ids if necessary
             all_ids = set(filter(None, [to_id] + cc_ids))
             users = User.objects.filter(id__in=all_ids)
             found_ids = {u.id for u in users}
@@ -71,10 +80,8 @@ class MeetingSerializer(serializers.ModelSerializer):
             if missing_ids:
                 raise serializers.ValidationError({"detail": f"User(s) {missing_ids} not found after auto-assign."})
 
-        # Step 3: Now that validation is done, create the meeting
         meeting = Meeting.objects.create(**validated_data)
 
-        # Step 4: Create participants (with versioning)
         max_version = MeetingParticipant.objects.filter(meeting=meeting).aggregate(max=Max('version'))['max'] or 0
         new_version = max_version + 1
 
