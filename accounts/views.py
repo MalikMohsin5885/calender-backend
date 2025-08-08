@@ -8,8 +8,10 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.views import APIView
 from .models import Permission, Role
 from .permissions import IsSupervisor
+from django.shortcuts import get_object_or_404
 
-from .serializers import RegisterSerializer, UserProfileSerializer, CustomTokenObtainPairSerializer
+
+from .serializers import RegisterSerializer, UserProfileSerializer, CustomTokenObtainPairSerializer, PermissionSerializer, RoleSerializer
 
 User = get_user_model()
 
@@ -40,3 +42,49 @@ class AuthenticatedUserView(APIView):
         return Response(serializer.data)
 
 
+class RolePermissionManagerView(APIView):
+    permission_classes = [IsAuthenticated, IsSupervisor]
+
+    def get(self, request):
+        """List all roles with their permissions + all available permissions."""
+        roles = Role.objects.prefetch_related('permissions').all()
+        permissions = Permission.objects.all()
+
+        return Response({
+            "roles": RoleSerializer(roles, many=True).data,
+            "permissions": PermissionSerializer(permissions, many=True).data
+        })
+
+    def post(self, request):
+        """
+        Update permissions for a given role.
+        Payload example:
+        {
+            "role_id": 3,
+            "add_permissions": [1, 2],
+            "remove_permissions": [5]
+        }
+        """
+        role_id = request.data.get("role_id")
+        add_perms = request.data.get("add_permissions", [])
+        remove_perms = request.data.get("remove_permissions", [])
+
+        if not role_id:
+            return Response({"error": "role_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        role = get_object_or_404(Role, id=role_id)
+
+        # Add permissions
+        if add_perms:
+            perms_to_add = Permission.objects.filter(id__in=add_perms)
+            role.permissions.add(*perms_to_add)
+
+        # Remove permissions
+        if remove_perms:
+            perms_to_remove = Permission.objects.filter(id__in=remove_perms)
+            role.permissions.remove(*perms_to_remove)
+
+        return Response({
+            "message": "Role permissions updated successfully",
+            "role": RoleSerializer(role).data
+        }, status=status.HTTP_200_OK)

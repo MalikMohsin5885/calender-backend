@@ -1,7 +1,7 @@
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
-from .models import User, Role, Department 
+from .models import User, Role, Department, Permission
 
 User = get_user_model()
 class RegisterSerializer(serializers.ModelSerializer):
@@ -116,15 +116,15 @@ class UserListUpdateCreateSerializer(serializers.ModelSerializer):
             'password': {'write_only': True, 'required': False}
         }
 
-    def create(self, validated_data):
-        password = validated_data.pop('password', None)
-        if not password:
-            password = "Default123"  # ✅ Use default if none provided
+    # def create(self, validated_data):
+    #     password = validated_data.pop('password', None)
+    #     if not password:
+    #         password = "Default123"  # ✅ Use default if none provided
 
-        user = User(**validated_data)
-        user.set_password(password)
-        user.save()
-        return user
+    #     user = User(**validated_data)
+    #     user.set_password(password)
+    #     user.save()
+    #     return user
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
@@ -134,3 +134,16 @@ class UserListUpdateCreateSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         instance.save()
         return instance
+    
+
+class PermissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Permission
+        fields = ['id', 'name']
+
+class RoleSerializer(serializers.ModelSerializer):
+    permissions = PermissionSerializer(many=True)
+
+    class Meta:
+        model = Role
+        fields = ['id', 'name', 'permissions']
