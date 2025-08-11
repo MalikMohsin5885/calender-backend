@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.utils.dateparse import parse_date
 from accounts.models import Department, User, Role
 from accounts.serializers import DepartmentSimpleSerializer, UserSimpleSerializer, UserListUpdateCreateSerializer
+from .serializers import MeetingRemarksSerializer
 from rest_framework.views import APIView
 
 User = get_user_model()
@@ -163,4 +164,23 @@ class UserListCreateUpdateView(APIView):
         if serializer.is_valid():
             serializer.save()
             return Response({"detail": "User updated successfully.", "data": serializer.data}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    
+    
+    
+class MeetingRemarksUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            meeting = Meeting.objects.get(pk=pk)
+        except Meeting.DoesNotExist:
+            return Response({"detail": "Meeting not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = MeetingRemarksSerializer(meeting, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"detail": "Remarks updated successfully."}, status=status.HTTP_200_OK)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

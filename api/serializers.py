@@ -130,3 +130,10 @@ class MeetingSerializer(serializers.ModelSerializer):
             for user in cc_users
         ])
         return meeting
+
+
+
+class MeetingRemarksSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Meeting
+        fields = ["remarks"]  # Only remarks field is editable
