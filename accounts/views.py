@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from .models import Permission, Role, Department
 from .permissions import IsSupervisor
 from django.shortcuts import get_object_or_404
+from django.db.models import Q
 
 
 from .serializers import RegisterSerializer, UserProfileSerializer, CustomTokenObtainPairSerializer, PermissionSerializer, DepartmentSimpleSerializer, UserSimpleSerializer, RoleSerializer
@@ -78,19 +79,23 @@ class RolePermissionManagerView(APIView):
         }, status=status.HTTP_200_OK)
         
         
+
 class RolesDepartmentsSupervisorsView(APIView):
     permission_classes = [IsAuthenticated, IsSupervisor]
 
     def get(self, request):
         roles = Role.objects.all()
         roles_data = RoleSerializer(roles, many=True).data
-        
         for role in roles_data:
             role.pop("permissions", None)
 
         departments = Department.objects.all()
 
-        users = User.objects.filter(role__name__in=["Supervisor", "BD_supervisor"])
+        # Case-insensitive role match to avoid exact string mismatch issues
+        users = User.objects.filter(
+            Q(role__name__iexact="Supervisor") |
+            Q(role__name__iexact="BD_Supervisor")
+        )
 
         return Response({
             "roles": roles_data,

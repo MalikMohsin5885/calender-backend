@@ -48,16 +48,25 @@ class MeetingListCreateView(generics.ListCreateAPIView):
         self.perform_create(serializer)
         return Response({"detail": "Meeting created successfully."}, status=status.HTTP_201_CREATED)
 
-
 class MeetingUpdateView(generics.RetrieveUpdateAPIView):
     queryset = Meeting.objects.all()
     serializer_class = MeetingSerializer
-    permission_classes = [IsAuthenticated, IsSupervisorOrBD]
+    permission_classes = [IsAuthenticated]
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
-        data = request.data
 
+        # Use your User model's has_permission method
+        can_update_all = request.user.has_permission("meeting.update_all_meetings")
+        can_update_own = request.user.has_permission("meeting.update_own_meetings")
+
+        if not (can_update_all or (can_update_own and instance.created_by == request.user)):
+            return Response(
+                {"detail": "You do not have permission to update this meeting."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        data = request.data
         to_id = data.get("to_id")
         cc_ids = data.get("cc_ids", [])
 
@@ -72,15 +81,16 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
         if missing_ids:
             return Response({"detail": f"User(s) {missing_ids} not found."}, status=400)
 
+        # Deactivate previous participants
         MeetingParticipant.objects.filter(meeting=instance, is_active=True).update(is_active=False)
 
         max_version = MeetingParticipant.objects.filter(meeting=instance).aggregate(Max("version"))["version__max"] or 0
         new_version = max_version + 1
 
-        to_user = User.objects.get(id=to_id) if to_id else None
         participants = []
 
-        if to_user:
+        if to_id:
+            to_user = get_object_or_404(User, id=to_id)
             participants.append(MeetingParticipant(
                 meeting=instance,
                 user=to_user,
@@ -104,8 +114,9 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
         MeetingParticipant.objects.bulk_create(participants)
 
         return super().update(request, *args, **kwargs)
-
-
+    
+    
+    
 
 class DepartmentAndUsersView(APIView):
     permission_classes = [IsAuthenticated]
