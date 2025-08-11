@@ -25,7 +25,7 @@ class MeetingSerializer(serializers.ModelSerializer):
     to_participant = serializers.SerializerMethodField()
     other_participants = serializers.SerializerMethodField()
 
-    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    created_by = serializers.CharField(source="created_by.name", read_only=True)
 
     to_id = serializers.IntegerField(write_only=True, required=False)
     cc_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)

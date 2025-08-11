@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Max
 from .models import Meeting, MeetingParticipant
 from .serializers import MeetingSerializer
-from accounts.permissions import IsSupervisorOrBD, IsSupervisor
+from accounts.permissions import IsSupervisor
 from django.contrib.auth import get_user_model
 from django.utils.dateparse import parse_date
 from accounts.models import Department, User, Role
