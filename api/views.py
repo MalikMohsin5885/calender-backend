@@ -136,7 +136,7 @@ class UserListCreateUpdateView(APIView):
     permission_classes = [IsAuthenticated, IsSupervisor]
 
     def get(self, request):
-        users = User.objects.all()
+        users = User.objects.exclude(id=request.user.id)
         serializer = UserListUpdateCreateSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
