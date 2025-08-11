@@ -11,6 +11,8 @@ from accounts.models import Department, User, Role
 from accounts.serializers import DepartmentSimpleSerializer, UserSimpleSerializer, UserListUpdateCreateSerializer
 from .serializers import MeetingRemarksSerializer
 from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
+
 
 User = get_user_model()
 
