@@ -106,7 +106,6 @@ class UserSimpleSerializer(serializers.ModelSerializer):
         
         
 
-
 class UserListUpdateCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
