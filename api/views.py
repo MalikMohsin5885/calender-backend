@@ -128,15 +128,11 @@ class DepartmentAndUsersView(APIView):
         departments = Department.objects.all().only('id', 'name')
         department_data = DepartmentSimpleSerializer(departments, many=True).data
 
-        closer_users = User.objects.filter(role__name='Closer').only('id', 'name', 'email')
-        closers_data = UserSimpleSerializer(closer_users, many=True).data
-
         all_users = User.objects.all().only('id', 'name', 'email')
         all_users_data = UserSimpleSerializer(all_users, many=True).data
 
         return Response({
             "departments": department_data,
-            "closers": closers_data,
             "all_users": all_users_data
         })
         

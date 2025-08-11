@@ -66,9 +66,17 @@ class MeetingSerializer(serializers.ModelSerializer):
 
         # Auto-assign to_id if not provided
         if not to_id:
-            dept_users = User.objects.filter(department=validated_data['department'], priority__isnull=False).order_by('priority')
+            dept_users = User.objects.filter(
+                department=validated_data['department'],
+                priority__isnull=False,
+                role__name="Closer"
+            ).order_by('priority')
+
             if not dept_users.exists():
-                raise serializers.ValidationError({"detail": "No users found in department to assign as 'to'."})
+                raise serializers.ValidationError({
+                    "detail": "No 'Closer' users found in department to assign as 'to'."
+                })
+
             to_user = dept_users.first()
             to_id = to_user.id
 
@@ -80,7 +88,10 @@ class MeetingSerializer(serializers.ModelSerializer):
             found_ids = {u.id for u in users}
             missing_ids = all_ids - found_ids
             if missing_ids:
-                raise serializers.ValidationError({"detail": f"User(s) {missing_ids} not found after auto-assign."})
+                raise serializers.ValidationError({
+                    "detail": f"User(s) {missing_ids} not found after auto-assign."
+                })
+
 
         # ====== NEW LOGIC: Check for time conflict for "to" user ======
         meeting_date = validated_data['date']
