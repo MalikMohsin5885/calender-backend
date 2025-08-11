@@ -5,6 +5,10 @@ from django.db.models import Max
 
 User = get_user_model()
 
+def times_overlap(start1, end1, start2, end2):
+    """Return True if two time ranges overlap."""
+    return start1 < end2 and start2 < end1
+
 class MemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -60,6 +64,7 @@ class MeetingSerializer(serializers.ModelSerializer):
         if missing_ids:
             raise serializers.ValidationError({"detail": f"User(s) {missing_ids} not found."})
 
+        # Auto-assign to_id if not provided
         if not to_id:
             dept_users = User.objects.filter(department=validated_data['department'], priority__isnull=False).order_by('priority')
             if not dept_users.exists():
@@ -76,6 +81,26 @@ class MeetingSerializer(serializers.ModelSerializer):
             missing_ids = all_ids - found_ids
             if missing_ids:
                 raise serializers.ValidationError({"detail": f"User(s) {missing_ids} not found after auto-assign."})
+
+        # ====== NEW LOGIC: Check for time conflict for "to" user ======
+        meeting_date = validated_data['date']
+        start_time = validated_data['start_time']
+        end_time = validated_data['end_time']
+
+        existing_meetings = Meeting.objects.filter(
+            participants__user_id=to_id,
+            participants__is_to=True,
+            participants__is_active=True,
+            date=meeting_date
+        )
+
+        for m in existing_meetings:
+            if times_overlap(start_time, end_time, m.start_time, m.end_time):
+                to_user_name = User.objects.get(id=to_id).name
+                raise serializers.ValidationError({
+                    "detail": f"User '{to_user_name}' already has a meeting from {m.start_time} to {m.end_time} on {meeting_date}. Please choose a different time."
+                })
+        # ====== END NEW LOGIC ======
 
         meeting = Meeting.objects.create(**validated_data)
 
