@@ -21,10 +21,8 @@ class MeetingSerializer(serializers.ModelSerializer):
     to_participant = serializers.SerializerMethodField()
     other_participants = serializers.SerializerMethodField()
 
-    # Make created_by read-only (so it's not required in request body)
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
 
-    # Add these fields to support participant logic in the request body
     to_id = serializers.IntegerField(write_only=True, required=False)
     cc_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
 
@@ -35,7 +33,7 @@ class MeetingSerializer(serializers.ModelSerializer):
             'meeting_type', 'department', 'created_by', 'created_at',
             'to_participant', 'other_participants',
             'remarks', 'jd_link', 'resume_link',
-            'to_id', 'cc_ids',  # Include these in serializer for input
+            'to_id', 'cc_ids',
         ]
 
     def get_to_participant(self, obj):
@@ -53,7 +51,6 @@ class MeetingSerializer(serializers.ModelSerializer):
         to_id = validated_data.pop('to_id', None)
         cc_ids = validated_data.pop('cc_ids', [])
 
-        # Set authenticated user as creator
         validated_data['created_by'] = request.user
 
         all_ids = set(filter(None, [to_id] + cc_ids))
@@ -85,7 +82,6 @@ class MeetingSerializer(serializers.ModelSerializer):
         max_version = MeetingParticipant.objects.filter(meeting=meeting).aggregate(max=Max('version'))['max'] or 0
         new_version = max_version + 1
 
-        # To participant
         to_user = User.objects.get(id=to_id)
         MeetingParticipant.objects.create(
             meeting=meeting,
@@ -96,7 +92,6 @@ class MeetingSerializer(serializers.ModelSerializer):
             updated_by=request.user
         )
 
-        # CC participants
         cc_users = [u for u in users if u.id in cc_ids]
         MeetingParticipant.objects.bulk_create([
             MeetingParticipant(

@@ -22,7 +22,6 @@ class MeetingListCreateView(generics.ListCreateAPIView):
         date_param = self.request.query_params.get('date')
         queryset = Meeting.objects.all()
 
-        # Filter by meeting.date instead of start_time__date
         if date_param:
             try:
                 date = parse_date(date_param)
@@ -73,14 +72,11 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
         if missing_ids:
             return Response({"detail": f"User(s) {missing_ids} not found."}, status=400)
 
-        # Deactivate current active participants
         MeetingParticipant.objects.filter(meeting=instance, is_active=True).update(is_active=False)
 
-        # Determine new version
         max_version = MeetingParticipant.objects.filter(meeting=instance).aggregate(Max("version"))["version__max"] or 0
         new_version = max_version + 1
 
-        # Create new participant records
         to_user = User.objects.get(id=to_id) if to_id else None
         participants = []
 
@@ -107,7 +103,6 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
 
         MeetingParticipant.objects.bulk_create(participants)
 
-        # Update meeting fields (like title, description, etc.)
         return super().update(request, *args, **kwargs)
 
 

@@ -21,7 +21,6 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated, IsSupervisor]
 
     def create(self, request, *args, **kwargs):
-        # (you can keep your custom message here)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -65,12 +64,10 @@ class RolePermissionManagerView(APIView):
 
         role = get_object_or_404(Role, id=role_id)
 
-        # Add permissions
         if add_perms:
             perms_to_add = Permission.objects.filter(id__in=add_perms)
             role.permissions.add(*perms_to_add)
 
-        # Remove permissions
         if remove_perms:
             perms_to_remove = Permission.objects.filter(id__in=remove_perms)
             role.permissions.remove(*perms_to_remove)
@@ -85,7 +82,6 @@ class RolesDepartmentsSupervisorsView(APIView):
     permission_classes = [IsAuthenticated, IsSupervisor]
 
     def get(self, request):
-        # Get all roles
         roles = Role.objects.all()
         roles_data = RoleSerializer(roles, many=True).data
         
