@@ -70,11 +70,12 @@ class MeetingSerializer(serializers.ModelSerializer):
                 department=validated_data['department'],
                 priority__isnull=False,
                 role__name="Closer"
-            ).order_by('priority')
+            ).exclude(id__in=cc_ids)
+            dept_users = dept_users.order_by('priority')
 
             if not dept_users.exists():
                 raise serializers.ValidationError({
-                    "detail": "No 'Closer' users found in department to assign as 'to'."
+                    "detail": "No eligible 'Closer' found in department for auto-assign."
                 })
 
             to_user = dept_users.first()
@@ -91,6 +92,7 @@ class MeetingSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "detail": f"User(s) {missing_ids} not found after auto-assign."
                 })
+
 
 
         # ====== NEW LOGIC: Check for time conflict for "to" user ======
