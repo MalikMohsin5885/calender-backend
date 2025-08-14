@@ -30,7 +30,7 @@ class Command(BaseCommand):
             Permission.objects.get_or_create(name=codename)
 
         roles_map = {
-            "Supervisor": perms,
+            "Administrator": perms,
             "BD_Supervisor": [
                 "meeting.schedule_meeting",
                 "meeting.view_assigned_meetings",
@@ -42,6 +42,7 @@ class Command(BaseCommand):
                 "meeting.update_own_meetings",
             ],
             "Closer": ["meeting.view_assigned_meetings"],
+            "Guest": []
         }
 
         for role_name, role_perms in roles_map.items():
@@ -76,7 +77,7 @@ class Command(BaseCommand):
         password = "test@123"
 
         try:
-            supervisor_role = Role.objects.get(name="Supervisor")
+            administrator_role = Role.objects.get(name="Administrator")
             ml_department = Department.objects.get(name="Machine Learning")
         except (Role.DoesNotExist, Department.DoesNotExist) as e:
             self.stdout.write(self.style.ERROR(f"Missing required role/department: {e}"))
@@ -87,7 +88,7 @@ class Command(BaseCommand):
                 email=email,
                 name=name,
                 password=password,
-                role=supervisor_role,
+                role=administrator_role,
                 department=ml_department,
             )
             self.stdout.write(self.style.SUCCESS("Default user 'Mohsin' created."))

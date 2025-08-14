@@ -58,5 +58,3 @@ class MeetingParticipant(models.Model):
 
     def __str__(self):
         return f"{self.user.name} → {self.meeting.title} (v{self.version})"
-
-

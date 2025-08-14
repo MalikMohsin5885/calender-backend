@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Max
 from .models import Meeting, MeetingParticipant
 from .serializers import MeetingSerializer
-from accounts.permissions import IsSupervisor
+from accounts.permissions import IsAdministrator
 from django.contrib.auth import get_user_model
 from django.utils.dateparse import parse_date
 from accounts.models import Department, User, Role
@@ -138,7 +138,7 @@ class DepartmentAndUsersView(APIView):
         
         
 class UserListCreateUpdateView(APIView):
-    permission_classes = [IsAuthenticated, IsSupervisor]
+    permission_classes = [IsAuthenticated, IsAdministrator]
 
     def get(self, request):
         users = User.objects.exclude(id=request.user.id)

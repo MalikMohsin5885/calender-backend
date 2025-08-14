@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.views import APIView
 from .models import Permission, Role, Department
-from .permissions import IsSupervisor
+from .permissions import IsAdministrator
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 
@@ -19,7 +19,7 @@ User = get_user_model()
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
-    permission_classes = [IsAuthenticated, IsSupervisor]
+    permission_classes = [IsAuthenticated, IsAdministrator]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -43,7 +43,7 @@ class AuthenticatedUserView(APIView):
 
 
 class RolePermissionManagerView(APIView):
-    permission_classes = [IsAuthenticated, IsSupervisor]
+    permission_classes = [IsAuthenticated, IsAdministrator]
 
     def get(self, request):
         """List all roles with their permissions + all available permissions."""
@@ -81,7 +81,7 @@ class RolePermissionManagerView(APIView):
         
 
 class RolesDepartmentsSupervisorsView(APIView):
-    permission_classes = [IsAuthenticated, IsSupervisor]
+    permission_classes = [IsAuthenticated, IsAdministrator]
 
     def get(self, request):
         roles = Role.objects.all()
@@ -93,7 +93,7 @@ class RolesDepartmentsSupervisorsView(APIView):
 
         # Case-insensitive role match to avoid exact string mismatch issues
         users = User.objects.filter(
-            Q(role__name__iexact="Supervisor") |
+            Q(role__name__iexact="Administrator") |
             Q(role__name__iexact="BD_Supervisor")
         )
 
