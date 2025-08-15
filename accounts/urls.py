@@ -5,6 +5,10 @@ from .views import RegisterView, CustomTokenObtainPairView, AuthenticatedUserVie
 from django.urls import path
 
 urlpatterns = [    
+    # dj-rest-auth API endpoints
+    
+    path('registration/', include('dj_rest_auth.registration.urls')),
+    
     path("register/", RegisterView.as_view(), name="register"),
     path("login/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("refresh/", TokenRefreshView.as_view(), name="token_refresh"),
