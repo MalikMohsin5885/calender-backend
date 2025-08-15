@@ -57,6 +57,10 @@ class MeetingSerializer(serializers.ModelSerializer):
 
         validated_data['created_by'] = request.user
 
+        # ✅ Always add created_by's supervisor to CC (if exists and not self)
+        if request.user.supervisor and request.user.supervisor.id != request.user.id:
+            cc_ids.append(request.user.supervisor.id)
+
         all_ids = set(filter(None, [to_id] + cc_ids))
         users = User.objects.filter(id__in=all_ids)
         found_ids = {u.id for u in users}
@@ -81,6 +85,7 @@ class MeetingSerializer(serializers.ModelSerializer):
             to_user = dept_users.first()
             to_id = to_user.id
 
+            # ✅ Add to_user's supervisor to CC if exists and not self
             if to_user.supervisor and to_user.supervisor.id != to_user.id:
                 cc_ids.append(to_user.supervisor.id)
 
@@ -93,9 +98,7 @@ class MeetingSerializer(serializers.ModelSerializer):
                     "detail": f"User(s) {missing_ids} not found after auto-assign."
                 })
 
-
-
-        # ====== NEW LOGIC: Check for time conflict for "to" user ======
+        # ====== Time conflict check for "to" user ======
         meeting_date = validated_data['date']
         start_time = validated_data['start_time']
         end_time = validated_data['end_time']
@@ -111,9 +114,9 @@ class MeetingSerializer(serializers.ModelSerializer):
             if times_overlap(start_time, end_time, m.start_time, m.end_time):
                 to_user_name = User.objects.get(id=to_id).name
                 raise serializers.ValidationError({
-                    "detail": f"User '{to_user_name}' already has a meeting from {m.start_time} to {m.end_time} on {meeting_date}. Please choose a different time."
+                    "detail": f"User '{to_user_name}' already has a meeting from {m.start_time} to {m.end_time} on {meeting_date}."
                 })
-        # ====== END NEW LOGIC ======
+        # ====== End check ======
 
         meeting = Meeting.objects.create(**validated_data)
 
@@ -143,6 +146,7 @@ class MeetingSerializer(serializers.ModelSerializer):
             for user in cc_users
         ])
         return meeting
+
 
 
 
