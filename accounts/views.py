@@ -10,6 +10,8 @@ from .models import Permission, Role, Department
 from .permissions import IsAdministrator
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django.conf import settings
+import requests
 
 
 from .serializers import RegisterSerializer, UserProfileSerializer, CustomTokenObtainPairSerializer, PermissionSerializer, DepartmentSimpleSerializer, UserSimpleSerializer, RoleSerializer
@@ -102,3 +104,70 @@ class RolesDepartmentsSupervisorsView(APIView):
             "departments": DepartmentSimpleSerializer(departments, many=True).data,
             "supervisors": UserSimpleSerializer(users, many=True).data
         }, status=status.HTTP_200_OK)
+        
+        
+        
+        
+        
+class GoogleCalendarInitView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        # Create the OAuth URL
+        oauth_url = (
+            f"https://accounts.google.com/o/oauth2/v2/auth?"
+            f"client_id={settings.GOOGLE_OAUTH2_CLIENT_ID}&"
+            f"redirect_uri={settings.GOOGLE_REDIRECT_URI}&"
+            f"response_type=code&"
+            f"scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/calendar.events&"
+            f"access_type=offline&"
+            f"prompt=consent&"
+            f"state={request.user.id}"  # Store user ID in state for later retrieval
+        )
+        
+        return Response({'authorization_url': oauth_url}, status=status.HTTP_200_OK)
+
+class GoogleCalendarRedirectView(APIView):
+    def get(self, request):
+        code = request.GET.get('code')
+        state = request.GET.get('state')  # This contains the user ID
+        
+        if not code:
+            return Response({'error': 'Authorization code not provided'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Exchange authorization code for tokens
+        data = {
+            'client_id': settings.GOOGLE_OAUTH2_CLIENT_ID,
+            'client_secret': settings.GOOGLE_OAUTH2_CLIENT_SECRET,
+            'code': code,
+            'grant_type': 'authorization_code',
+            'redirect_uri': settings.GOOGLE_REDIRECT_URI
+        }
+        
+        response = requests.post('https://oauth2.googleapis.com/token', data=data)
+        token_data = response.json()
+        
+        if 'access_token' not in token_data:
+            return Response({'error': 'Failed to obtain access token'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get user info from Google
+        user_info_response = requests.get(
+            'https://www.googleapis.com/oauth2/v1/userinfo',
+            headers={'Authorization': f'Bearer {token_data["access_token"]}'}
+        )
+        user_info = user_info_response.json()
+        
+        # Find the user
+        try:
+            user = User.objects.get(id=state)
+            user.save_google_tokens(
+                token_data['access_token'],
+                token_data['refresh_token'],
+                token_data['expires_in']
+            )
+            user.google_sub = user_info['id']
+            user.save()
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        return Response({'message': 'Google Calendar connected successfully'}, status=status.HTTP_200_OK)

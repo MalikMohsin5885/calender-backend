@@ -12,7 +12,6 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
-import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -31,31 +30,20 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    # Django default
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.sites',
-
-    # Third-party
     'rest_framework',
-    'rest_framework_simplejwt',
+    'rest_framework_simplejwt', 
     'corsheaders',
-    'allauth',
-    'allauth.account',
-    'allauth.socialaccount',
-    'allauth.socialaccount.providers.google',
-    'rest_framework.authtoken',
 
-    # Your apps
     'core',
     'accounts',
     'api',
 ]
-
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -66,7 +54,6 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'corsheaders.middleware.CorsMiddleware',
-    'allauth.account.middleware.AccountMiddleware',
 ]
 
 ROOT_URLCONF = 'backend.urls'
@@ -166,49 +153,16 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-AUTHENTICATION_BACKENDS = [
-    'django.contrib.auth.backends.ModelBackend',  # Default
-    'allauth.account.auth_backends.AuthenticationBackend',  # Needed for allauth
+# Add to your existing settings.py
+
+# Google Calendar API Configuration
+GOOGLE_OAUTH2_CLIENT_ID = '34902771404-95o6rsaurj49agpr5mihlqthi0d67v7u.apps.googleusercontent.com'
+GOOGLE_OAUTH2_CLIENT_SECRET = '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'
+GOOGLE_REDIRECT_URI = 'http://localhost:8000/auth/google/callback/'
+GOOGLE_SCOPES = [
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "openid",
 ]
-
-
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = "smtp.gmail.com"
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv("GMAIL_USER") 
-EMAIL_HOST_PASSWORD = os.getenv("GMAIL_PASSWORD") 
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-
-SITE_ID = 1
-
-GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
-GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
-GOOGLE_OAUTH_CALLBACK_URL = os.getenv("GOOGLE_OAUTH_CALLBACK_URL")
-
-ACCOUNT_USER_MODEL_USERNAME_FIELD = None
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_USERNAME_REQUIRED = False
-ACCOUNT_AUTHENTICATION_METHOD = 'email'
-
-
-
-SOCIALACCOUNT_PROVIDERS = {
-    "google": {
-        "SCOPE": [
-            "profile",
-            "email",
-            "openid",
-            "https://www.googleapis.com/auth/calendar"  # Calendar write access
-        ],
-        "AUTH_PARAMS": {
-            "access_type": "offline",  # Needed for refresh token
-            "prompt": "consent"
-        },
-        "APP": {
-            "client_id": os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
-            "secret": os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
-            "key": ""
-        }
-    }
-}
