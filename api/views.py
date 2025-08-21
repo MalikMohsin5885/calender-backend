@@ -117,9 +117,7 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
         MeetingParticipant.objects.bulk_create(participants)
 
         return super().update(request, *args, **kwargs)
-    
-    
-    
+
 
 class DepartmentAndUsersView(APIView):
     permission_classes = [IsAuthenticated]
@@ -163,10 +161,8 @@ class UserListCreateUpdateView(APIView):
             serializer.save()
             return Response({"detail": "User updated successfully.", "data": serializer.data}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    
-    
-    
+
+
 class MeetingRemarksUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
