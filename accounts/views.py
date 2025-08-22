@@ -12,6 +12,7 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Q
 # from django.views.decorators.csrf import csrf_exempt
 # from django.utils.decorators import method_decorator
+import requests
 
 
 from .serializers import RegisterSerializer, UserProfileSerializer, CustomTokenObtainPairSerializer, PermissionSerializer, DepartmentSimpleSerializer, UserSimpleSerializer, RoleSerializer
@@ -105,7 +106,6 @@ class RolesDepartmentsSupervisorsView(APIView):
             "supervisors": UserSimpleSerializer(users, many=True).data
         }, status=status.HTTP_200_OK)
 
-# @method_decorator(csrf_exempt, name='dispatch')
 class GoogleAuthCodeView(APIView):
     permission_classes = [AllowAny]
 
@@ -115,6 +115,37 @@ class GoogleAuthCodeView(APIView):
         if not authorization_code:
             return Response({"error": "code is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # For now, just acknowledge receipt. Hook your exchange-with-Google here later.
-        print(f"Authorization code received code:{authorization_code}")
-        return Response({"message": "Authorization code received", "code": authorization_code}, status=status.HTTP_200_OK)
+        # Google OAuth details (from your GCP JSON)
+        client_id = "34902771404-95o6rsaurj49agpr5mihlqthi0d67v7u.apps.googleusercontent.com"
+        client_secret = "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"
+        redirect_uri = "http://localhost:8000/auth/google/callback/"  # must match GCP
+
+        # Exchange code for tokens
+        token_url = "https://oauth2.googleapis.com/token"
+        data = {
+            "code": authorization_code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": "postmessage",
+            "grant_type": "authorization_code",
+        }
+
+        try:
+            r = requests.post(token_url, data=data)
+            token_response = r.json()
+            print("token_response", token_response)
+            if "error" in token_response:
+                return Response({"error": token_response}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+            return Response({
+                "message": "Tokens received",
+                "tokens": token_response
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        
+        
