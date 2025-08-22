@@ -10,6 +10,8 @@ from .models import Permission, Role, Department
 from .permissions import IsAdministrator
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+# from django.views.decorators.csrf import csrf_exempt
+# from django.utils.decorators import method_decorator
 
 
 from .serializers import RegisterSerializer, UserProfileSerializer, CustomTokenObtainPairSerializer, PermissionSerializer, DepartmentSimpleSerializer, UserSimpleSerializer, RoleSerializer
@@ -102,3 +104,17 @@ class RolesDepartmentsSupervisorsView(APIView):
             "departments": DepartmentSimpleSerializer(departments, many=True).data,
             "supervisors": UserSimpleSerializer(users, many=True).data
         }, status=status.HTTP_200_OK)
+
+# @method_decorator(csrf_exempt, name='dispatch')
+class GoogleAuthCodeView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        authorization_code = request.data.get("code")
+
+        if not authorization_code:
+            return Response({"error": "code is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # For now, just acknowledge receipt. Hook your exchange-with-Google here later.
+        print(f"Authorization code received code:{authorization_code}")
+        return Response({"message": "Authorization code received", "code": authorization_code}, status=status.HTTP_200_OK)
