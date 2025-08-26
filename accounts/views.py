@@ -13,6 +13,7 @@ from django.db.models import Q
 # from django.views.decorators.csrf import csrf_exempt
 # from django.utils.decorators import method_decorator
 import requests
+from .utils import extract_google_user_info 
 
 
 from .serializers import RegisterSerializer, UserProfileSerializer, CustomTokenObtainPairSerializer, PermissionSerializer, DepartmentSimpleSerializer, UserSimpleSerializer, RoleSerializer
@@ -127,17 +128,36 @@ class GoogleAuthCodeView(APIView):
             "client_id": client_id,
             "client_secret": client_secret,
             "redirect_uri": "postmessage",
+            # "redirect_uri": redirect_uri,
             "grant_type": "authorization_code",
         }
 
         try:
             r = requests.post(token_url, data=data)
             token_response = r.json()
-            print("token_response", token_response)
             if "error" in token_response:
                 return Response({"error": token_response}, status=status.HTTP_400_BAD_REQUEST)
 
-
+            id_token = token_response.get('id_token') 
+            
+            if not id_token: 
+                return Response({"error": "Missing id_token in token response"}, status=status.HTTP_400_BAD_REQUEST) 
+                
+            google_user_info = extract_google_user_info(id_token) 
+            
+            if not google_user_info or not google_user_info.get('email'):       return Response({"error": "Failed to extract email from id_token"}, status=status.HTTP_400_BAD_REQUEST) 
+            
+            user_email = google_user_info['email'] 
+            
+            # Find user by email 
+            try: 
+                user = User.objects.get(email=user_email) 
+                
+            except User.DoesNotExist: 
+                return Response({ "error": "User not found with this email" }, status=status.HTTP_404_NOT_FOUND) 
+            
+            # Save Google tokens and mark as linked 
+            user.save_google_tokens( access_token=token_response.get('access_token'), refresh_token=token_response.get('refresh_token'), expires_in=token_response.get('expires_in', 3600),token_id = token_response.get('id_token')  )
 
             return Response({
                 "message": "Tokens received",
