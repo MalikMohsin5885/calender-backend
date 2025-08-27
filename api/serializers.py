@@ -1,7 +1,15 @@
+from datetime import datetime, timedelta
+import requests
 from rest_framework import serializers
 from .models import Meeting, MeetingParticipant
 from django.contrib.auth import get_user_model
 from django.db.models import Max
+import pytz
+from dotenv import load_dotenv
+import os
+
+load_dotenv(override=True)
+# print(f"CLIENT ID => {os.getenv('GOOGLE_OAUTH_CLIENT_ID')}")
 
 User = get_user_model()
 
@@ -49,6 +57,24 @@ class MeetingSerializer(serializers.ModelSerializer):
     def get_other_participants(self, obj):
         others = obj.participants.filter(is_to=False, is_active=True)
         return MeetingParticipantSerializer(others, many=True).data
+    
+    def refresh_google_token(self,user):
+        """Force refresh the access token using the refresh token."""
+        data = {
+            "client_id": os.getenv('GOOGLE_OAUTH_CLIENT_ID'),
+            "client_secret": os.getenv('GOOGLE_OAUTH_CLIENT_SECRET'),
+            "refresh_token": user.google_refresh_token,
+            "grant_type": "refresh_token",
+        }
+        resp = requests.post("https://oauth2.googleapis.com/token", data=data)
+
+        if resp.status_code != 200:
+            raise Exception(f"Google token refresh failed: {resp.text}")
+
+        tokens = resp.json()
+        user.google_access_token = tokens["access_token"]
+        user.save(update_fields=["google_access_token"])
+        return user.google_access_token
 
     def create(self, validated_data):
         request = self.context['request']
@@ -145,6 +171,123 @@ class MeetingSerializer(serializers.ModelSerializer):
             )
             for user in cc_users
         ])
+
+        # Google Calender Integration
+
+        access_token = request.user.google_access_token  
+        
+        if not access_token:
+            raise serializers.ValidationError({"detail": "User is not linked to Google Calendar."})
+        print(f"ACCESSS TOKEN 2.0 => {access_token}\n\n")
+        # start_datetime = datetime.combine(meeting.date, meeting.start_time)
+        # end_datetime = datetime.combine(meeting.date, meeting.end_time)
+
+        # eastern = pytz.timezone("America/New_York")
+        # print(f"\n\nSTART TIME => {eastern.localize(start_datetime.isoformat())}\n\n")
+        # print(f"\n\nEND TIME => {eastern.localize(end_datetime)}\n\n")
+
+        # start_datetime = eastern.localize(datetime.combine(meeting.date, meeting.start_time))
+        # end_datetime = eastern.localize(datetime.combine(meeting.date, meeting.end_time))
+
+        # pst = pytz.timezone("America/Los_Angeles")   # input timezone
+        est = pytz.timezone("America/New_York")      # target timezone
+        pst = pytz.timezone("Asia/Karachi")   # input timezone
+
+        start_naive = datetime.combine(meeting.date, meeting.start_time)
+        end_naive = datetime.combine(meeting.date, meeting.end_time)
+
+        # Step 1: Localize to PST (what the user entered)
+        start_est = est.localize(start_naive)
+        end_est = est.localize(end_naive)
+
+        # Step 2: Convert to EST
+        start_pst = start_est.astimezone(pst)
+        end_pst = end_est.astimezone(pst)
+
+        print(f"START NAIVE => {start_naive}\n")
+        print(f"START EST => {start_est.strftime('%Y-%m-%dT%H:%M:%S')}\n")
+        print(f"START EST SIMPLE=> {start_est}\n\n")
+        print(f"START PST => {start_pst}\n")
+        print(f"END NAIVE => {end_naive}\n")
+        print(f"END EST => {end_est.strftime('%Y-%m-%dT%H:%M:%S')}\n")
+        print(f"END EST SIMPLE=> {end_est}\n\n")
+        print(f"END PST => {end_pst.strftime('%Y-%m-%dT%H:%M:%S')}\n")
+        # print(f"END PST => {end_pst}\n")
+
+        event_payload = {
+            "summary": meeting.title,
+            # "location": "Google Meet",
+            "description": meeting.description or "",
+            "start": {
+                "dateTime": start_pst.strftime("%Y-%m-%dT%H:%M:%S"),
+                # "dateTime": start_est.isoformat(),
+                "timeZone": "Asia/Karachi",  # or derive from user/department
+            },
+            "end": {
+                "dateTime": end_pst.strftime("%Y-%m-%dT%H:%M:%S"),
+                # "dateTime": end_est.isoformat(),
+                "timeZone": "Asia/Karachi",
+            },
+            "attendees": [{"email": p.user.email} for p in meeting.participants.all()]+[{"email": "lead.alpha@alphabridgeconsulting.com"}],
+            "conferenceData": {
+                "createRequest": {
+                    "requestId": f"meeting-{meeting.id}",
+                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
+                }
+            },
+            "attachments" : []
+        }
+        if meeting.jd_link:
+            event_payload["attachments"].append({
+                "fileUrl": meeting.jd_link,
+                "title": "Job Description",
+                # "mimeType": "application/pdf"  # Adjust based on your link type
+            })
+
+        # Add resume link as attachment if it exists
+        if meeting.resume_link:
+            event_payload["attachments"].append({
+                "fileUrl": meeting.resume_link,
+                "title": "Resume",
+                # "mimeType": "application/pdf"  # Adjust based on your link type
+            })
+        print(f"\n\n{event_payload}\n\n")
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        resp = requests.post(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1",
+            headers=headers,
+            json=event_payload,
+        )
+        print(f"\n\nGOOGLE API RESPONSE => {resp}\n\n")
+        print(f"\n\nGOOGLE API RESPONSE HEADERS => {dict(resp.headers)}\n\n")
+
+        if resp.status_code == 401:  # expired/invalid token
+            user = request.user
+
+            access_token = self.refresh_google_token(user)
+            print(f"\nREFRESHED NEW ACCESS TOKEN => {access_token}\n\n")
+            headers["Authorization"] = f"Bearer {access_token}"
+            resp = requests.post(
+                "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1",  
+                headers=headers,
+                json=event_payload,
+            )
+
+
+        if resp.status_code not in (200, 201):
+            print("Google API error:", resp.text)
+            raise serializers.ValidationError({"detail": "Failed to create Google Calendar event."})
+
+        google_event = resp.json()
+        print(f"\n\nFULL GOOGLE EVENT RESPONSE => {google_event}\n\n")
+        meeting.google_event_id = google_event["id"]
+        meeting.google_meet_link = google_event.get("hangoutLink")  # store the Meet link
+        print(f"\n\nMEETING LINK => {meeting.google_meet_link}\n\n ")
+        meeting.save()
         return meeting
 
 

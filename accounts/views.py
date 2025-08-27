@@ -31,8 +31,7 @@ class RegisterView(generics.CreateAPIView):
         serializer.save()
         return Response(
             {"message": "User registered successfully"},
-            status=status.HTTP_201_CREATED
-        )
+            status=status.HTTP_201_CREATED)
 
 class CustomTokenObtainPairView(TokenObtainPairView, generics.GenericAPIView):
     serializer_class = CustomTokenObtainPairSerializer
@@ -108,11 +107,11 @@ class RolesDepartmentsSupervisorsView(APIView):
         }, status=status.HTTP_200_OK)
 
 class GoogleAuthCodeView(APIView):
-    permission_classes = [AllowAny]
-
+    permission_classes = [IsAuthenticated]
+    
     def post(self, request):
         authorization_code = request.data.get("code")
-
+        
         if not authorization_code:
             return Response({"error": "code is required"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -138,23 +137,22 @@ class GoogleAuthCodeView(APIView):
             if "error" in token_response:
                 return Response({"error": token_response}, status=status.HTTP_400_BAD_REQUEST)
 
-            id_token = token_response.get('id_token') 
+            # id_token = token_response.get('id_token') 
             
-            if not id_token: 
-                return Response({"error": "Missing id_token in token response"}, status=status.HTTP_400_BAD_REQUEST) 
+            # if not id_token: 
+            #     return Response({"error": "Missing id_token in token response"}, status=status.HTTP_400_BAD_REQUEST) 
                 
-            google_user_info = extract_google_user_info(id_token) 
+            # google_user_info = extract_google_user_info(id_token) 
             
-            if not google_user_info or not google_user_info.get('email'):       return Response({"error": "Failed to extract email from id_token"}, status=status.HTTP_400_BAD_REQUEST) 
+            # if not google_user_info or not google_user_info.get('email'):       return Response({"error": "Failed to extract email from id_token"}, status=status.HTTP_400_BAD_REQUEST) 
             
-            user_email = google_user_info['email'] 
+            # user_email = google_user_info['email'] 
             
             # Find user by email 
-            try: 
-                user = User.objects.get(email=user_email) 
+             
+            user = request.user 
+            print(f"USER => {user}")
                 
-            except User.DoesNotExist: 
-                return Response({ "error": "User not found with this email" }, status=status.HTTP_404_NOT_FOUND) 
             
             # Save Google tokens and mark as linked 
             user.save_google_tokens( access_token=token_response.get('access_token'), refresh_token=token_response.get('refresh_token'), expires_in=token_response.get('expires_in', 3600),token_id = token_response.get('id_token')  )

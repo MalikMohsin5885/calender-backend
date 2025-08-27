@@ -12,6 +12,9 @@ class Meeting(models.Model):
     start_time = models.TimeField()
     end_time = models.TimeField()
     meeting_type = models.CharField(max_length=50)
+    google_event_id = models.CharField(max_length=255, blank=True, null=True)
+    google_meet_link = models.URLField(blank=True, null=True)
+
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
