@@ -13,9 +13,10 @@ load_dotenv(override=True)
 
 User = get_user_model()
 
-def times_overlap(start1, end1, start2, end2):
-    """Return True if two time ranges overlap."""
-    return start1 < end2 and start2 < end1
+# def times_overlap(start1, end1, start2, end2):
+#     """Return True if two time ranges overlap."""
+#     # return start1 < end2 and start2 < end1
+#     return start1 == start2 and end1 == end2
 
 class MemberSerializer(serializers.ModelSerializer):
     class Meta:
@@ -136,12 +137,12 @@ class MeetingSerializer(serializers.ModelSerializer):
             date=meeting_date
         )
 
-        for m in existing_meetings:
-            if times_overlap(start_time, end_time, m.start_time, m.end_time):
-                to_user_name = User.objects.get(id=to_id).name
-                raise serializers.ValidationError({
-                    "detail": f"User '{to_user_name}' already has a meeting from {m.start_time} to {m.end_time} on {meeting_date}."
-                })
+        # for m in existing_meetings:
+        #     if times_overlap(start_time, end_time, m.start_time, m.end_time):
+        #         to_user_name = User.objects.get(id=to_id).name
+        #         raise serializers.ValidationError({
+        #             "detail": f"User '{to_user_name}' already has a meeting from {m.start_time} to {m.end_time} on {meeting_date}."
+        #         })
         # ====== End check ======
 
         meeting = Meeting.objects.create(**validated_data)
