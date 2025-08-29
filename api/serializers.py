@@ -242,6 +242,7 @@ class MeetingSerializer(serializers.ModelSerializer):
             event_payload["attachments"].append({
                 "fileUrl": meeting.jd_link,
                 "title": "Job Description",
+                "fileAccessLevel": "anyone"
                 # "mimeType": "application/pdf"  # Adjust based on your link type
             })
 
@@ -250,6 +251,7 @@ class MeetingSerializer(serializers.ModelSerializer):
             event_payload["attachments"].append({
                 "fileUrl": meeting.resume_link,
                 "title": "Resume",
+                "fileAccessLevel": "anyone"
                 # "mimeType": "application/pdf"  # Adjust based on your link type
             })
         print(f"\n\n{event_payload}\n\n")
@@ -259,7 +261,7 @@ class MeetingSerializer(serializers.ModelSerializer):
         }
 
         resp = requests.post(
-            "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1",
+                "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&supportsAttachments=true",
             headers=headers,
             json=event_payload,
         )
