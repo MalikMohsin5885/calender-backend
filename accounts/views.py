@@ -7,13 +7,15 @@ from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.views import APIView
 from .models import Permission, Role, Department
-from .permissions import IsAdministrator
+from .permissions import IsChief
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 # from django.views.decorators.csrf import csrf_exempt
 # from django.utils.decorators import method_decorator
 import requests
 from .utils import extract_google_user_info 
+import jwt  # PyJWT
+
 
 
 from .serializers import RegisterSerializer, UserProfileSerializer, CustomTokenObtainPairSerializer, PermissionSerializer, DepartmentSimpleSerializer, UserSimpleSerializer, RoleSerializer
@@ -23,7 +25,7 @@ User = get_user_model()
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
-    permission_classes = [IsAuthenticated, IsAdministrator]
+    permission_classes = [IsAuthenticated, IsChief]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -46,7 +48,7 @@ class AuthenticatedUserView(APIView):
 
 
 class RolePermissionManagerView(APIView):
-    permission_classes = [IsAuthenticated, IsAdministrator]
+    permission_classes = [IsAuthenticated, IsChief]
 
     def get(self, request):
         """List all roles with their permissions + all available permissions."""
@@ -84,19 +86,19 @@ class RolePermissionManagerView(APIView):
         
 
 class RolesDepartmentsSupervisorsView(APIView):
-    permission_classes = [IsAuthenticated, IsAdministrator]
+    permission_classes = [IsAuthenticated, IsChief]
 
     def get(self, request):
         roles = Role.objects.all()
         roles_data = RoleSerializer(roles, many=True).data
         for role in roles_data:
-            role.pop("permissions", None)
+            role.pop("permissions", None)   
 
         departments = Department.objects.all()
 
         # Case-insensitive role match to avoid exact string mismatch issues
         users = User.objects.filter(
-            Q(role__name__iexact="Administrator") |
+            Q(role__name__iexact="Chief") |
             Q(role__name__iexact="BD_Supervisor")
         )
 
@@ -137,21 +139,28 @@ class GoogleAuthCodeView(APIView):
             if "error" in token_response:
                 return Response({"error": token_response}, status=status.HTTP_400_BAD_REQUEST)
 
-            # id_token = token_response.get('id_token') 
+            id_token = token_response.get('id_token') 
             
-            # if not id_token: 
-            #     return Response({"error": "Missing id_token in token response"}, status=status.HTTP_400_BAD_REQUEST) 
+            if not id_token: 
+                return Response({"error": "Missing id_token in token response"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Decode the id_token (verify signature with Google's public keys in production)
+            decoded_token = jwt.decode(id_token, options={"verify_signature": False})
+            google_email = decoded_token.get("email")
                 
-            # google_user_info = extract_google_user_info(id_token) 
+            if not google_email:
+                return Response({"error": "Google account email not found"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Check if Google email matches the logged-in user email
+            if request.user.email.lower() != google_email.lower():
+                return Response(
+                    {"error": "You must connect with the same email you used to log in."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
             
-            # if not google_user_info or not google_user_info.get('email'):       return Response({"error": "Failed to extract email from id_token"}, status=status.HTTP_400_BAD_REQUEST) 
-            
-            # user_email = google_user_info['email'] 
-            
-            # Find user by email 
-             
             user = request.user 
-            print(f"USER => {user}")
+            print("Logged-in user:", user.email)
+            print("Google email from token:", google_email)
                 
             
             # Save Google tokens and mark as linked 
@@ -166,4 +175,10 @@ class GoogleAuthCodeView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         
-        
+class GoogleLinkedStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        return Response({"google_linked": user.google_linked})
+

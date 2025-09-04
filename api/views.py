@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Max
 from .models import Meeting, MeetingParticipant
 from .serializers import MeetingSerializer
-from accounts.permissions import IsAdministrator
+from accounts.permissions import IsChief
 from django.contrib.auth import get_user_model
 from django.utils.dateparse import parse_date
 from accounts.models import Department, User, Role
@@ -126,7 +126,7 @@ class DepartmentAndUsersView(APIView):
         departments = Department.objects.all().only('id', 'name')
         department_data = DepartmentSimpleSerializer(departments, many=True).data
 
-        all_users = User.objects.all().only('id', 'name', 'email')
+        all_users = User.objects.filter(google_linked=True).only('id', 'name', 'email')
         all_users_data = UserSimpleSerializer(all_users, many=True).data
 
         return Response({
@@ -136,7 +136,7 @@ class DepartmentAndUsersView(APIView):
         
         
 class UserListCreateUpdateView(APIView):
-    permission_classes = [IsAuthenticated, IsAdministrator]
+    permission_classes = [IsAuthenticated, IsChief]
 
     def get(self, request):
         users = User.objects.exclude(id=request.user.id)

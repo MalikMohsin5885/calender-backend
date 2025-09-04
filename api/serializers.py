@@ -59,23 +59,23 @@ class MeetingSerializer(serializers.ModelSerializer):
         others = obj.participants.filter(is_to=False, is_active=True)
         return MeetingParticipantSerializer(others, many=True).data
     
-    def refresh_google_token(self,user):
-        """Force refresh the access token using the refresh token."""
-        data = {
-            "client_id": os.getenv('GOOGLE_OAUTH_CLIENT_ID'),
-            "client_secret": os.getenv('GOOGLE_OAUTH_CLIENT_SECRET'),
-            "refresh_token": user.google_refresh_token,
-            "grant_type": "refresh_token",
-        }
-        resp = requests.post("https://oauth2.googleapis.com/token", data=data)
+    # def refresh_google_token(self,user):
+    #     """Force refresh the access token using the refresh token."""
+    #     data = {
+    #         "client_id": os.getenv('GOOGLE_OAUTH_CLIENT_ID'),
+    #         "client_secret": os.getenv('GOOGLE_OAUTH_CLIENT_SECRET'),
+    #         "refresh_token": user.google_refresh_token,
+    #         "grant_type": "refresh_token",
+    #     }
+    #     resp = requests.post("https://oauth2.googleapis.com/token", data=data)
 
-        if resp.status_code != 200:
-            raise Exception(f"Google token refresh failed: {resp.text}")
+    #     if resp.status_code != 200:
+    #         raise Exception(f"Google token refresh failed: {resp.text}")
 
-        tokens = resp.json()
-        user.google_access_token = tokens["access_token"]
-        user.save(update_fields=["google_access_token"])
-        return user.google_access_token
+    #     tokens = resp.json()
+    #     user.google_access_token = tokens["access_token"]
+    #     user.save(update_fields=["google_access_token"])
+    #     return user.google_access_token
 
     def create(self, validated_data):
         request = self.context['request']
@@ -137,13 +137,7 @@ class MeetingSerializer(serializers.ModelSerializer):
             date=meeting_date
         )
 
-        # for m in existing_meetings:
-        #     if times_overlap(start_time, end_time, m.start_time, m.end_time):
-        #         to_user_name = User.objects.get(id=to_id).name
-        #         raise serializers.ValidationError({
-        #             "detail": f"User '{to_user_name}' already has a meeting from {m.start_time} to {m.end_time} on {meeting_date}."
-        #         })
-        # ====== End check ======
+
 
         meeting = Meeting.objects.create(**validated_data)
 
@@ -205,15 +199,6 @@ class MeetingSerializer(serializers.ModelSerializer):
         start_pst = start_est.astimezone(pst)
         end_pst = end_est.astimezone(pst)
 
-        print(f"START NAIVE => {start_naive}\n")
-        print(f"START EST => {start_est.strftime('%Y-%m-%dT%H:%M:%S')}\n")
-        print(f"START EST SIMPLE=> {start_est}\n\n")
-        print(f"START PST => {start_pst}\n")
-        print(f"END NAIVE => {end_naive}\n")
-        print(f"END EST => {end_est.strftime('%Y-%m-%dT%H:%M:%S')}\n")
-        print(f"END EST SIMPLE=> {end_est}\n\n")
-        print(f"END PST => {end_pst.strftime('%Y-%m-%dT%H:%M:%S')}\n")
-        # print(f"END PST => {end_pst}\n")
 
         event_payload = {
             "summary": meeting.title,

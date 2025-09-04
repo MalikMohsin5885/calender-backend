@@ -24,14 +24,15 @@ class Command(BaseCommand):
             "meeting.delete_meeting",
             "meeting.update_all_meetings",
             "meeting.update_own_meetings",
+            "meeting.assign_participants"
         ]
 
         for codename in perms:
             Permission.objects.get_or_create(name=codename)
 
         roles_map = {
-            "Administrator": perms,
-            "BD_Supervisor": [
+            "Chief": perms,
+            "BD_Lead": [
                 "meeting.schedule_meeting",
                 "meeting.view_assigned_meetings",
                 "meeting.update_own_meetings",
@@ -41,6 +42,10 @@ class Command(BaseCommand):
                 "meeting.view_own_meetings",
                 "meeting.update_own_meetings",
             ],
+            "Closer_Lead": [
+                "meeting.view_assigned_meetings",
+                "meeting.assign_participants",
+                ],
             "Closer": ["meeting.view_assigned_meetings"],
             "Guest": ["meeting.view_all_meetings"]
         }
@@ -72,12 +77,12 @@ class Command(BaseCommand):
     def seed_default_user(self):
         self.stdout.write("Seeding default user...")
 
-        email = "mohsin@gmail.com"
+        email = "malikmohsin8239@gmail.com"
         name = "Mohsin"
         password = "test@123"
 
         try:
-            administrator_role = Role.objects.get(name="Administrator")
+            chief_role = Role.objects.get(name="Chief")
             ml_department = Department.objects.get(name="Machine Learning")
         except (Role.DoesNotExist, Department.DoesNotExist) as e:
             self.stdout.write(self.style.ERROR(f"Missing required role/department: {e}"))
@@ -88,7 +93,7 @@ class Command(BaseCommand):
                 email=email,
                 name=name,
                 password=password,
-                role=administrator_role,
+                role=chief_role,
                 department=ml_department,
             )
             self.stdout.write(self.style.SUCCESS("Default user 'Mohsin' created."))
