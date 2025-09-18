@@ -140,19 +140,40 @@ class UserSimpleSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'name', 'email']
 
-
 class MeetingEligibilitySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MeetingEligibility
-        fields = ['departments', 'can_take_contract', 'can_take_w2', 'priority']
+    departments = serializers.ListField(
+        child=serializers.CharField(),  # Accept list of department names
+    )
 
-class MeetingEligibilitySerializer(serializers.ModelSerializer):
     class Meta:
         model = MeetingEligibility
         fields = ['id', 'departments', 'can_take_contract', 'can_take_w2', 'priority']
         extra_kwargs = {
             'id': {'read_only': True}
         }
+
+    def to_representation(self, instance):
+        # Convert department IDs → department names
+        representation = super().to_representation(instance)
+        from accounts.models import Department  # adjust import if needed
+        department_names = list(
+            Department.objects.filter(id__in=instance.departments).values_list("name", flat=True)
+        )
+        representation['departments'] = department_names
+        return representation
+
+    def to_internal_value(self, data):
+        # Convert department names → IDs
+        from accounts.models import Department
+        departments = data.get("departments", [])
+        if departments:
+            department_ids = list(
+                Department.objects.filter(name__in=departments).values_list("id", flat=True)
+            )
+            if len(department_ids) != len(departments):
+                raise serializers.ValidationError({"departments": "One or more departments are invalid."})
+            data["departments"] = department_ids
+        return super().to_internal_value(data)
 
 
 class UserListUpdateSerializer(serializers.ModelSerializer):
@@ -175,7 +196,6 @@ class UserListUpdateSerializer(serializers.ModelSerializer):
         }
 
     def update(self, instance, validated_data):
-        # Handle meeting eligibilities separately
         eligibilities_data = validated_data.pop('meeting_eligibilities', None)
 
         # Update user fields
@@ -186,11 +206,9 @@ class UserListUpdateSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         instance.save()
 
-        # Update MeetingEligibilities if provided
+        # Update MeetingEligibilities
         if eligibilities_data is not None:
-            # Clear existing eligibilities
             instance.meeting_eligibilities.all().delete()
-            # Recreate new eligibilities
             for eligibility in eligibilities_data:
                 MeetingEligibility.objects.create(user=instance, **eligibility)
 
