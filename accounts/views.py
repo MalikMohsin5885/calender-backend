@@ -10,18 +10,15 @@ from .models import Permission, Role, Department
 from .permissions import IsChief
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
-# from django.views.decorators.csrf import csrf_exempt
-# from django.utils.decorators import method_decorator
 import requests
 from .utils import extract_google_user_info 
-import jwt  # PyJWT
+import jwt
 
 
 
 from .serializers import RegisterSerializer, UserProfileSerializer, CustomTokenObtainPairSerializer, PermissionSerializer, DepartmentSimpleSerializer, UserSimpleSerializer, RoleSerializer
 
 User = get_user_model()
-
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
@@ -30,10 +27,13 @@ class RegisterView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        user = serializer.save()
         return Response(
-            {"message": "User registered successfully"},
-            status=status.HTTP_201_CREATED)
+            {
+                "message": "User registered successfully",
+            },
+            status=status.HTTP_201_CREATED
+        )
 
 class CustomTokenObtainPairView(TokenObtainPairView, generics.GenericAPIView):
     serializer_class = CustomTokenObtainPairSerializer

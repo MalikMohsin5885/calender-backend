@@ -1,7 +1,7 @@
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
-from .models import User, Role, Department, Permission
+from .models import User, Role, Department, Permission, MeetingEligibility
 
 User = get_user_model()
 class RegisterSerializer(serializers.ModelSerializer):
@@ -9,23 +9,47 @@ class RegisterSerializer(serializers.ModelSerializer):
     role_id = serializers.IntegerField(write_only=True)
     department_id = serializers.IntegerField(write_only=True)
     supervisor_id = serializers.IntegerField(required=False, allow_null=True)
+
+    # MeetingEligibility fields
+    departments = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        help_text="List of Department IDs this user is eligible for"
+    )
     priority = serializers.IntegerField(required=False, allow_null=True)
+    can_take_contract = serializers.BooleanField(default=True)
+    can_take_w2 = serializers.BooleanField(default=True)
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'email', 'password', 'role_id', 'department_id', 'supervisor_id', 'priority']
+        fields = [
+            'id', 'name', 'email', 'password',
+            'role_id', 'department_id', 'supervisor_id',
+            # eligibility
+            'departments', 'priority', 'can_take_contract', 'can_take_w2'
+        ]
 
     def create(self, validated_data):
         role_id = validated_data.pop('role_id')
         department_id = validated_data.pop('department_id')
         supervisor_id = validated_data.pop('supervisor_id', None)
+
+        # eligibility fields
+        departments = validated_data.pop('departments', [])
+        priority = validated_data.pop('priority', None)
+        can_take_contract = validated_data.pop('can_take_contract', True)
+        can_take_w2 = validated_data.pop('can_take_w2', True)
+
         password = validated_data.pop('password')
 
+        # ----- Role -----
         try:
             role = Role.objects.get(id=role_id)
         except Role.DoesNotExist:
             raise serializers.ValidationError({"role_id": "Invalid role ID"})
-        
+
+        # ----- Department -----
         try:
             if role.name == 'BD':
                 department, _ = Department.objects.get_or_create(name='BD')
@@ -38,14 +62,15 @@ class RegisterSerializer(serializers.ModelSerializer):
         except Department.DoesNotExist:
             raise serializers.ValidationError({"department_id": "Invalid department ID"})
 
-
+        # ----- Supervisor -----
         supervisor = None
-        if supervisor_id is not None:
+        if supervisor_id:
             try:
                 supervisor = User.objects.get(id=supervisor_id)
             except User.DoesNotExist:
                 raise serializers.ValidationError({"supervisor_id": "Invalid supervisor ID"})
 
+        # ----- Create User -----
         user = User(
             role=role,
             department=department,
@@ -54,8 +79,18 @@ class RegisterSerializer(serializers.ModelSerializer):
         )
         user.set_password(password)
         user.save()
-        return user
 
+        # ----- Create MeetingEligibility -----
+        if departments:
+            MeetingEligibility.objects.create(
+                user=user,
+                departments=departments,
+                priority=priority,
+                can_take_contract=can_take_contract,
+                can_take_w2=can_take_w2
+            )
+
+        return user
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -88,10 +123,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     role = serializers.CharField(source='role.name', read_only=True)
     department = serializers.CharField(source='department.name', read_only=True)
+    supervisor = serializers.CharField(source='supervisor.name', read_only=True)
+
     class Meta:
         model = User
-        fields = ['id', 'name', 'email', 'role', 'department']
-
+        fields = ['id', 'name', 'email', 'role', 'department', 'supervisor', 'is_active']
 
 class DepartmentSimpleSerializer(serializers.ModelSerializer):
     class Meta:
@@ -103,37 +139,63 @@ class UserSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'name', 'email']
-        
-        
 
-class UserListUpdateCreateSerializer(serializers.ModelSerializer):
+
+class MeetingEligibilitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MeetingEligibility
+        fields = ['departments', 'can_take_contract', 'can_take_w2', 'priority']
+
+class MeetingEligibilitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MeetingEligibility
+        fields = ['id', 'departments', 'can_take_contract', 'can_take_w2', 'priority']
+        extra_kwargs = {
+            'id': {'read_only': True}
+        }
+
+
+class UserListUpdateSerializer(serializers.ModelSerializer):
+    role = serializers.CharField(source='role.name', read_only=True)
+    department = serializers.CharField(source='department.name', read_only=True)
+    supervisor = serializers.CharField(source='supervisor.name', read_only=True)
+
+    meeting_eligibilities = MeetingEligibilitySerializer(many=True)
+
     class Meta:
         model = User
-        fields = ['id', 'name', 'email', 'password', 'role', 'department', 'supervisor', 'is_active', 'priority']
-        read_only_fields = ['id']
+        fields = [
+            'id', 'name', 'email', 'password',
+            'role', 'department', 'supervisor',
+            'is_active', 'meeting_eligibilities'
+        ]
+        read_only_fields = ['id', 'role', 'department', 'supervisor']
         extra_kwargs = {
             'password': {'write_only': True, 'required': False}
         }
 
-    # def create(self, validated_data):
-    #     password = validated_data.pop('password', None)
-    #     if not password:
-    #         password = "Default123"  # ✅ Use default if none provided
-
-    #     user = User(**validated_data)
-    #     user.set_password(password)
-    #     user.save()
-    #     return user
-
     def update(self, instance, validated_data):
+        # Handle meeting eligibilities separately
+        eligibilities_data = validated_data.pop('meeting_eligibilities', None)
+
+        # Update user fields
         password = validated_data.pop('password', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
             instance.set_password(password)
         instance.save()
+
+        # Update MeetingEligibilities if provided
+        if eligibilities_data is not None:
+            # Clear existing eligibilities
+            instance.meeting_eligibilities.all().delete()
+            # Recreate new eligibilities
+            for eligibility in eligibilities_data:
+                MeetingEligibility.objects.create(user=instance, **eligibility)
+
         return instance
-    
+
 
 class PermissionSerializer(serializers.ModelSerializer):
     class Meta:

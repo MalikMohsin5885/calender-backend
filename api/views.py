@@ -8,7 +8,7 @@ from accounts.permissions import IsChief
 from django.contrib.auth import get_user_model
 from django.utils.dateparse import parse_date
 from accounts.models import Department, User, Role
-from accounts.serializers import DepartmentSimpleSerializer, UserSimpleSerializer, UserListUpdateCreateSerializer
+from accounts.serializers import DepartmentSimpleSerializer, UserSimpleSerializer, UserListUpdateSerializer
 from .serializers import MeetingRemarksSerializer
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
@@ -140,15 +140,8 @@ class UserListCreateUpdateView(APIView):
 
     def get(self, request):
         users = User.objects.exclude(id=request.user.id)
-        serializer = UserListUpdateCreateSerializer(users, many=True)
+        serializer = UserListUpdateSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
-    # def post(self, request):
-    #     serializer = UserListUpdateCreateSerializer(data=request.data)
-    #     if serializer.is_valid():
-    #         serializer.save()
-    #         return Response({"detail": "User created successfully."}, status=status.HTTP_201_CREATED)
-    #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def put(self, request, pk):
         try:
@@ -156,10 +149,13 @@ class UserListCreateUpdateView(APIView):
         except User.DoesNotExist:
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = UserListUpdateCreateSerializer(user, data=request.data, partial=True)
+        serializer = UserListUpdateSerializer(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response({"detail": "User updated successfully.", "data": serializer.data}, status=status.HTTP_200_OK)
+            return Response(
+                {"detail": "User updated successfully.", "data": serializer.data},
+                status=status.HTTP_200_OK
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

@@ -1,6 +1,7 @@
 from datetime import timedelta
 from django.conf import settings
 from django.db import models
+from django.contrib.postgres.fields import ArrayField  # Postgres-specific
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils.timezone import now
 import requests
@@ -52,30 +53,33 @@ class User(AbstractBaseUser, PermissionsMixin):
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True)
     supervisor = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True)
     is_active = models.BooleanField(default=True)
-    priority = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    # :small_blue_diamond: Google Calendar Integration fields
-    google_linked = models.BooleanField(default=False)  # has user connected Google Calendar?
-    # google_sub = models.CharField(max_length=255, blank=True, null=True)  # Google account unique ID
-    google_refresh_token = models.TextField(blank=True, null=True)  # encrypted storage recommended
-    google_access_token = models.TextField(blank=True, null=True)  # optional: store last access token
-    google_access_token_expiry = models.DateTimeField(blank=True, null=True)  # when access token expires
+
+    # Google OAuth fields
+    google_linked = models.BooleanField(default=False)
+    google_refresh_token = models.TextField(blank=True, null=True)
+    google_access_token = models.TextField(blank=True, null=True)
+    google_access_token_expiry = models.DateTimeField(blank=True, null=True)
     google_token_id = models.TextField(blank=True, null=True)
-    # timezone = models.CharField(max_length=50, default="Asia/Karachi")  # used for event times
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['name']
+
     objects = UserManager()
+
     def __str__(self):
         return self.name
+
     @property
     def get_permissions(self):
         if self.role:
             return set(p.name for p in self.role.permissions.all())
         return set()
+
     def has_permission(self, perm_name):
         return perm_name in self.get_permissions
 
-    def save_google_tokens(self, access_token, refresh_token, expires_in,token_id):
+    def save_google_tokens(self, access_token, refresh_token, expires_in, token_id):
         self.google_access_token = access_token
         self.google_refresh_token = refresh_token
         self.google_access_token_expiry = now() + timedelta(seconds=expires_in)
@@ -85,11 +89,10 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def refresh_google_token(self):
         if not self.google_refresh_token:
-            # Cannot refresh without a refresh token
             self.google_linked = False
             self.save()
             return None
-        
+
         try:
             data = {
                 'client_id': settings.GOOGLE_OAUTH2_CLIENT_ID,
@@ -107,7 +110,6 @@ class User(AbstractBaseUser, PermissionsMixin):
                 self.save()
                 return self.google_access_token
             else:
-                # Refresh failed (maybe revoked)
                 self.google_linked = False
                 self.save()
                 return None
@@ -117,11 +119,29 @@ class User(AbstractBaseUser, PermissionsMixin):
             self.google_linked = False
             self.save()
             return None
-        
+
     def get_valid_access_token(self):
-        # If token exists and not expired
         if self.google_access_token and self.google_access_token_expiry and self.google_access_token_expiry > now():
             return self.google_access_token
-
-        # Otherwise refresh
         return self.refresh_google_token()
+
+
+class MeetingEligibility(models.Model):
+    """
+    Defines which departments a user is eligible for meetings/calls,
+    along with flags (contract, W2) and priority.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="meeting_eligibilities")
+    departments = ArrayField(models.IntegerField(), default=list, help_text="List of Department IDs user is eligible for")
+    
+    can_take_contract = models.BooleanField(default=True)
+    can_take_w2 = models.BooleanField(default=True)
+    priority = models.IntegerField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name_plural = "Meeting Eligibilities"
+
+    def __str__(self):
+        return f"{self.user.name} (priority {self.priority})"
