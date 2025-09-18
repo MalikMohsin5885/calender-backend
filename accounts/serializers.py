@@ -10,38 +10,23 @@ class RegisterSerializer(serializers.ModelSerializer):
     department_id = serializers.IntegerField(write_only=True)
     supervisor_id = serializers.IntegerField(required=False, allow_null=True)
 
-    # MeetingEligibility fields
-    departments = serializers.ListField(
-        child=serializers.IntegerField(),
-        write_only=True,
-        required=False,
-        help_text="List of Department IDs this user is eligible for"
-    )
-    priority = serializers.IntegerField(required=False, allow_null=True)
-    can_take_contract = serializers.BooleanField(default=True)
-    can_take_w2 = serializers.BooleanField(default=True)
+    # One MeetingEligibility object
+    meeting_eligibility = serializers.DictField(write_only=True, required=False)
 
     class Meta:
         model = User
         fields = [
-            'id', 'name', 'email', 'password',
-            'role_id', 'department_id', 'supervisor_id',
-            # eligibility
-            'departments', 'priority', 'can_take_contract', 'can_take_w2'
+            "id", "name", "email", "password",
+            "role_id", "department_id", "supervisor_id",
+            "meeting_eligibility",
         ]
 
     def create(self, validated_data):
-        role_id = validated_data.pop('role_id')
-        department_id = validated_data.pop('department_id')
-        supervisor_id = validated_data.pop('supervisor_id', None)
-
-        # eligibility fields
-        departments = validated_data.pop('departments', [])
-        priority = validated_data.pop('priority', None)
-        can_take_contract = validated_data.pop('can_take_contract', True)
-        can_take_w2 = validated_data.pop('can_take_w2', True)
-
-        password = validated_data.pop('password')
+        role_id = validated_data.pop("role_id")
+        department_id = validated_data.pop("department_id")
+        supervisor_id = validated_data.pop("supervisor_id", None)
+        eligibility_data = validated_data.pop("meeting_eligibility", None)
+        password = validated_data.pop("password")
 
         # ----- Role -----
         try:
@@ -51,11 +36,11 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         # ----- Department -----
         try:
-            if role.name == 'BD':
-                department, _ = Department.objects.get_or_create(name='BD')
+            if role.name == "BD":
+                department, _ = Department.objects.get_or_create(name="BD")
             else:
                 department = Department.objects.get(id=department_id)
-                if department.name == 'Business Development':
+                if department.name == "Business Development":
                     raise serializers.ValidationError(
                         {"department_id": "Only BD role can have the Business Development department"}
                     )
@@ -75,23 +60,45 @@ class RegisterSerializer(serializers.ModelSerializer):
             role=role,
             department=department,
             supervisor=supervisor,
-            **validated_data
+            **validated_data,
         )
         user.set_password(password)
         user.save()
 
-        # ----- Create MeetingEligibility -----
-        if departments:
+        # ----- Create One MeetingEligibility -----
+        if eligibility_data:
+            department_ids = eligibility_data.get("departments", [])
+            priority = eligibility_data.get("priority")
+            can_take_contract = eligibility_data.get("can_take_contract", True)
+            can_take_w2 = eligibility_data.get("can_take_w2", True)
+
+           # Validate departments by name
+            valid_names = list(
+                Department.objects.filter(name__in=department_ids).values_list("name", flat=True)
+            )
+
+            # Check if any submitted names are invalid
+            invalid_names = set(department_ids) - set(valid_names)
+            if invalid_names:
+                raise serializers.ValidationError(
+                    {"meeting_eligibility": f"Invalid department names: {list(invalid_names)}"}
+                )
+
+            # Convert valid names into ids for saving
+            valid_ids = list(
+                Department.objects.filter(name__in=department_ids).values_list("id", flat=True)
+            )
+
+
             MeetingEligibility.objects.create(
                 user=user,
-                departments=departments,
+                departments=valid_ids,
                 priority=priority,
                 can_take_contract=can_take_contract,
-                can_take_w2=can_take_w2
+                can_take_w2=can_take_w2,
             )
 
         return user
-
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
