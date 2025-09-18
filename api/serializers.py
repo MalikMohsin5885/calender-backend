@@ -6,17 +6,11 @@ from django.contrib.auth import get_user_model
 from django.db.models import Max
 import pytz
 from dotenv import load_dotenv
-import os
 
 load_dotenv(override=True)
-# print(f"CLIENT ID => {os.getenv('GOOGLE_OAUTH_CLIENT_ID')}")
 
 User = get_user_model()
 
-# def times_overlap(start1, end1, start2, end2):
-#     """Return True if two time ranges overlap."""
-#     # return start1 < end2 and start2 < end1
-#     return start1 == start2 and end1 == end2
 
 class MemberSerializer(serializers.ModelSerializer):
     class Meta:
@@ -84,7 +78,7 @@ class MeetingSerializer(serializers.ModelSerializer):
 
         validated_data['created_by'] = request.user
 
-        # ✅ Always add created_by's supervisor to CC (if exists and not self)
+        # Always add created_by's supervisor to CC (if exists and not self)
         if request.user.supervisor and request.user.supervisor.id != request.user.id:
             cc_ids.append(request.user.supervisor.id)
 
@@ -112,7 +106,7 @@ class MeetingSerializer(serializers.ModelSerializer):
             to_user = dept_users.first()
             to_id = to_user.id
 
-            # ✅ Add to_user's supervisor to CC if exists and not self
+            # Add to_user's supervisor to CC if exists and not self
             if to_user.supervisor and to_user.supervisor.id != to_user.id:
                 cc_ids.append(to_user.supervisor.id)
 

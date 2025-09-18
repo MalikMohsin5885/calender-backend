@@ -29,7 +29,6 @@ class Meeting(models.Model):
         related_name='meetings'
     )
 
-    remarks = models.TextField(blank=True, null=True, help_text="General meeting remarks from any participant")
     jd_link = models.URLField(blank=True, null=True, help_text="Link to job description or job board")
     resume_link = models.URLField(blank=True, null=True, help_text="Link to resume or document")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -61,3 +60,15 @@ class MeetingParticipant(models.Model):
 
     def __str__(self):
         return f"{self.user.name} → {self.meeting.title} (v{self.version})"
+    
+    
+
+class MeetingRemark(models.Model):
+    meeting = models.ForeignKey('Meeting',on_delete=models.CASCADE,related_name='remarks')
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='remarks_added')
+    remark = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Remark by {self.user.name} on {self.meeting.title}"
