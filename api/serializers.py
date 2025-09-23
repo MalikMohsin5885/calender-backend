@@ -7,6 +7,9 @@ from django.db.models import Max
 import pytz
 from dotenv import load_dotenv
 
+from .models import Meeting, MeetingParticipant
+from .meeting_assignment import assign_to_user  # <-- our util
+
 load_dotenv(override=True)
 
 User = get_user_model()
@@ -32,6 +35,9 @@ class MeetingSerializer(serializers.ModelSerializer):
 
     to_id = serializers.IntegerField(write_only=True, required=False)
     cc_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+    
+    
+    remarks = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = Meeting
@@ -42,7 +48,12 @@ class MeetingSerializer(serializers.ModelSerializer):
             'remarks', 'jd_link', 'resume_link',
             'to_id', 'cc_ids',
         ]
-
+    def validate_remarks(self, value):
+        # Normalize empty string to empty list
+        if value in ["", None]:
+            return []
+        return value
+    
     def get_to_participant(self, obj):
         to_part = obj.participants.filter(is_to=True, is_active=True).first()
         if to_part:
@@ -52,24 +63,7 @@ class MeetingSerializer(serializers.ModelSerializer):
     def get_other_participants(self, obj):
         others = obj.participants.filter(is_to=False, is_active=True)
         return MeetingParticipantSerializer(others, many=True).data
-    
-    # def refresh_google_token(self,user):
-    #     """Force refresh the access token using the refresh token."""
-    #     data = {
-    #         "client_id": os.getenv('GOOGLE_OAUTH_CLIENT_ID'),
-    #         "client_secret": os.getenv('GOOGLE_OAUTH_CLIENT_SECRET'),
-    #         "refresh_token": user.google_refresh_token,
-    #         "grant_type": "refresh_token",
-    #     }
-    #     resp = requests.post("https://oauth2.googleapis.com/token", data=data)
 
-    #     if resp.status_code != 200:
-    #         raise Exception(f"Google token refresh failed: {resp.text}")
-
-    #     tokens = resp.json()
-    #     user.google_access_token = tokens["access_token"]
-    #     user.save(update_fields=["google_access_token"])
-    #     return user.google_access_token
 
     def create(self, validated_data):
         request = self.context['request']
@@ -89,50 +83,72 @@ class MeetingSerializer(serializers.ModelSerializer):
         if missing_ids:
             raise serializers.ValidationError({"detail": f"User(s) {missing_ids} not found."})
 
-        # Auto-assign to_id if not provided
+        # # Auto-assign to_id if not provided
+        # if not to_id:
+        #     dept_users = User.objects.filter(
+        #         department=validated_data['department'],
+        #         priority__isnull=False,
+        #         role__name="Closer"
+        #     ).exclude(id__in=cc_ids)
+        #     dept_users = dept_users.order_by('priority')
+
+        #     if not dept_users.exists():
+        #         raise serializers.ValidationError({
+        #             "detail": "No eligible 'Closer' found in department for auto-assign."
+        #         })
+
+        #     to_user = dept_users.first()
+        #     to_id = to_user.id
+
+        #     # Add to_user's supervisor to CC if exists and not self
+        #     if to_user.supervisor and to_user.supervisor.id != to_user.id:
+        #         cc_ids.append(to_user.supervisor.id)
+
+        #     all_ids = set(filter(None, [to_id] + cc_ids))
+        #     users = User.objects.filter(id__in=all_ids)
+        #     found_ids = {u.id for u in users}
+        #     missing_ids = all_ids - found_ids
+        #     if missing_ids:
+        #         raise serializers.ValidationError({
+        #             "detail": f"User(s) {missing_ids} not found after auto-assign."
+        #         })
+        
+        # Auto-assign "to" user if not provided
         if not to_id:
-            dept_users = User.objects.filter(
-                department=validated_data['department'],
-                priority__isnull=False,
-                role__name="Closer"
-            ).exclude(id__in=cc_ids)
-            dept_users = dept_users.order_by('priority')
-
-            if not dept_users.exists():
+            to_user = assign_to_user(validated_data)
+            if not to_user:
                 raise serializers.ValidationError({
-                    "detail": "No eligible 'Closer' found in department for auto-assign."
+                    "detail": "No eligible user found for auto-assignment."
                 })
-
-            to_user = dept_users.first()
             to_id = to_user.id
 
-            # Add to_user's supervisor to CC if exists and not self
+            # Add to_user's supervisor to CC if exists
             if to_user.supervisor and to_user.supervisor.id != to_user.id:
                 cc_ids.append(to_user.supervisor.id)
 
-            all_ids = set(filter(None, [to_id] + cc_ids))
-            users = User.objects.filter(id__in=all_ids)
-            found_ids = {u.id for u in users}
-            missing_ids = all_ids - found_ids
-            if missing_ids:
-                raise serializers.ValidationError({
-                    "detail": f"User(s) {missing_ids} not found after auto-assign."
-                })
+        # # ====== Time conflict check for "to" user ======
+        # meeting_date = validated_data['date']
+        # start_time = validated_data['start_time']
+        # end_time = validated_data['end_time']
 
-        # ====== Time conflict check for "to" user ======
-        meeting_date = validated_data['date']
-        start_time = validated_data['start_time']
-        end_time = validated_data['end_time']
-
-        existing_meetings = Meeting.objects.filter(
-            participants__user_id=to_id,
-            participants__is_to=True,
-            participants__is_active=True,
-            date=meeting_date
-        )
-
+        # existing_meetings = Meeting.objects.filter(
+        #     participants__user_id=to_id,
+        #     participants__is_to=True,
+        #     participants__is_active=True,
+        #     date=meeting_date
+        # )
+        
+        # Validate users exist
+        all_ids = set(filter(None, [to_id] + cc_ids))
+        users = User.objects.filter(id__in=all_ids)
+        found_ids = {u.id for u in users}
+        missing_ids = all_ids - found_ids
+        if missing_ids:
+            raise serializers.ValidationError({"detail": f"User(s) {missing_ids} not found."})
 
 
+
+        # ===== Create Meeting =====
         meeting = Meeting.objects.create(**validated_data)
 
         max_version = MeetingParticipant.objects.filter(meeting=meeting).aggregate(max=Max('version'))['max'] or 0
@@ -167,18 +183,8 @@ class MeetingSerializer(serializers.ModelSerializer):
         
         if not access_token:
             raise serializers.ValidationError({"detail": "User is not linked to Google Calendar."})
-        print(f"ACCESSS TOKEN 2.0 => {access_token}\n\n")
-        # start_datetime = datetime.combine(meeting.date, meeting.start_time)
-        # end_datetime = datetime.combine(meeting.date, meeting.end_time)
+        
 
-        # eastern = pytz.timezone("America/New_York")
-        # print(f"\n\nSTART TIME => {eastern.localize(start_datetime.isoformat())}\n\n")
-        # print(f"\n\nEND TIME => {eastern.localize(end_datetime)}\n\n")
-
-        # start_datetime = eastern.localize(datetime.combine(meeting.date, meeting.start_time))
-        # end_datetime = eastern.localize(datetime.combine(meeting.date, meeting.end_time))
-
-        # pst = pytz.timezone("America/Los_Angeles")   # input timezone
         est = pytz.timezone("America/New_York")      # target timezone
         pst = pytz.timezone("Asia/Karachi")   # input timezone
 

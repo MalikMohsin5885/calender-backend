@@ -127,10 +127,6 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 
 class MeetingEligibility(models.Model):
-    """
-    Defines which departments a user is eligible for meetings/calls,
-    along with flags (contract, W2) and priority.
-    """
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="meeting_eligibilities")
     departments = ArrayField(models.IntegerField(), default=list, help_text="List of Department IDs user is eligible for")
     
