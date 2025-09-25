@@ -9,7 +9,7 @@ from django.contrib.auth import get_user_model
 from django.utils.dateparse import parse_date
 from accounts.models import Department, User, Role
 from accounts.serializers import DepartmentSimpleSerializer, UserSimpleSerializer, UserListUpdateSerializer
-from .serializers import MeetingRemarksSerializer
+from .serializers import MeetingRemarkSerializer
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 
@@ -158,19 +158,18 @@ class UserListCreateUpdateView(APIView):
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
 class MeetingRemarksUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def patch(self, request, pk):
+    def post(self, request, pk):  # ✅ use POST since remarks are new entries
         try:
             meeting = Meeting.objects.get(pk=pk)
         except Meeting.DoesNotExist:
             return Response({"detail": "Meeting not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = MeetingRemarksSerializer(meeting, data=request.data, partial=True)
+        serializer = MeetingRemarkSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response({"detail": "Remarks updated successfully."}, status=status.HTTP_200_OK)
+            serializer.save(meeting=meeting, user=request.user)  # ✅ bind meeting & user
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

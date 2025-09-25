@@ -1,13 +1,12 @@
 from datetime import datetime, timedelta
 import requests
 from rest_framework import serializers
-from .models import Meeting, MeetingParticipant
 from django.contrib.auth import get_user_model
 from django.db.models import Max
 import pytz
 from dotenv import load_dotenv
 
-from .models import Meeting, MeetingParticipant
+from .models import Meeting, MeetingParticipant, MeetingRemark
 from .meeting_assignment import assign_to_user  # <-- our util
 
 load_dotenv(override=True)
@@ -26,6 +25,14 @@ class MeetingParticipantSerializer(serializers.ModelSerializer):
     class Meta:
         model = MeetingParticipant
         fields = ['user', 'is_to', 'version', 'updated_by']
+        
+class MeetingRemarkSerializer(serializers.ModelSerializer):
+    user = serializers.CharField(source="user.name", read_only=True)
+
+    class Meta:
+        model = MeetingRemark
+        fields = ["id", "meeting", "user", "remark", "created_at"]
+        read_only_fields = ["id", "meeting", "user", "created_at"]
 
 class MeetingSerializer(serializers.ModelSerializer):
     to_participant = serializers.SerializerMethodField()
@@ -37,7 +44,7 @@ class MeetingSerializer(serializers.ModelSerializer):
     cc_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
     
     
-    remarks = serializers.CharField(required=False, allow_blank=True)
+    remarks = MeetingRemarkSerializer(many=True, read_only=True)  # ✅ nested remarks
 
     class Meta:
         model = Meeting
@@ -256,7 +263,7 @@ class MeetingSerializer(serializers.ModelSerializer):
         if resp.status_code == 401:  # expired/invalid token
             user = request.user
 
-            access_token = self.refresh_google_token(user)
+            access_token = user.get_valid_access_token()
             print(f"\nREFRESHED NEW ACCESS TOKEN => {access_token}\n\n")
             headers["Authorization"] = f"Bearer {access_token}"
             resp = requests.post(
@@ -280,8 +287,10 @@ class MeetingSerializer(serializers.ModelSerializer):
 
 
 
+class MeetingRemarkSerializer(serializers.ModelSerializer):
+    user = serializers.CharField(source="user.name", read_only=True)
 
-class MeetingRemarksSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Meeting
-        fields = ["remarks"]  # Only remarks field is editable
+        model = MeetingRemark
+        fields = ["id", "meeting", "user", "remark", "created_at"]
+        read_only_fields = ["id", "meeting", "user", "created_at"]
