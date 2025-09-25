@@ -95,8 +95,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
         try:
             data = {
-                'client_id': settings.GOOGLE_OAUTH2_CLIENT_ID,
-                'client_secret': settings.GOOGLE_OAUTH2_CLIENT_SECRET,
+                'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
+                'client_secret': settings.GOOGLE_OAUTH_CLIENT_SECRET,
                 'refresh_token': self.google_refresh_token,
                 'grant_type': 'refresh_token'
             }

@@ -59,7 +59,7 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
 
-        # Use your User model's has_permission method
+        # --- Permission check ---
         can_update_all = request.user.has_permission("meeting.update_all_meetings")
         can_update_own = request.user.has_permission("meeting.update_own_meetings")
 
@@ -69,6 +69,7 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        # --- Handle participants ---
         data = request.data
         to_id = data.get("to_id")
         cc_ids = data.get("cc_ids", [])
@@ -84,7 +85,7 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
         if missing_ids:
             return Response({"detail": f"User(s) {missing_ids} not found."}, status=400)
 
-        # Deactivate previous participants
+        # deactivate old
         MeetingParticipant.objects.filter(meeting=instance, is_active=True).update(is_active=False)
 
         max_version = MeetingParticipant.objects.filter(meeting=instance).aggregate(Max("version"))["version__max"] or 0
@@ -116,8 +117,57 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
 
         MeetingParticipant.objects.bulk_create(participants)
 
-        return super().update(request, *args, **kwargs)
+        # --- Update Google Calendar ---
+        if instance.google_event_id:
+            access_token = request.user.google_access_token
+            if not access_token:
+                return Response({"detail": "User not linked to Google Calendar."}, status=400)
 
+            attendees = [{"email": p.user.email} for p in instance.participants.filter(is_active=True)]
+            attendees.append({"email": "lead.alpha@alphabridgeconsulting.com"})  # always include this
+
+            event_payload = {
+                "summary": data.get("title", instance.title),
+                "description": data.get("description", instance.description),
+                "start": {
+                    "dateTime": datetime.combine(instance.date, instance.start_time).isoformat(),
+                    "timeZone": "Asia/Karachi",
+                },
+                "end": {
+                    "dateTime": datetime.combine(instance.date, instance.end_time).isoformat(),
+                    "timeZone": "Asia/Karachi",
+                },
+                "attendees": attendees,
+            }
+
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            }
+
+            resp = requests.patch(
+                f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{instance.google_event_id}",
+                headers=headers,
+                json=event_payload,
+            )
+
+            if resp.status_code == 401:
+                access_token = request.user.get_valid_access_token()
+                headers["Authorization"] = f"Bearer {access_token}"
+                resp = requests.patch(
+                    f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{instance.google_event_id}",
+                    headers=headers,
+                    json=event_payload,
+                )
+
+            if resp.status_code not in (200, 201):
+                return Response({"detail": "Failed to update Google Calendar event."}, status=400)
+
+            google_event = resp.json()
+            instance.google_meet_link = google_event.get("hangoutLink")
+            instance.save()
+
+        return super().update(request, *args, **kwargs)
 
 class DepartmentAndUsersView(APIView):
     permission_classes = [IsAuthenticated]
