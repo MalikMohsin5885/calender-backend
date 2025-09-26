@@ -93,33 +93,33 @@ class User(AbstractBaseUser, PermissionsMixin):
             self.save()
             return None
 
+        data = {
+            'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
+            'client_secret': settings.GOOGLE_OAUTH_CLIENT_SECRET,
+            'refresh_token': self.google_refresh_token,
+            'grant_type': 'refresh_token'
+        }
         try:
-            data = {
-                'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
-                'client_secret': settings.GOOGLE_OAUTH_CLIENT_SECRET,
-                'refresh_token': self.google_refresh_token,
-                'grant_type': 'refresh_token'
-            }
             response = requests.post('https://oauth2.googleapis.com/token', data=data)
             token_data = response.json()
 
-            if 'access_token' in token_data:
-                self.google_access_token = token_data['access_token']
-                self.google_access_token_expiry = now() + timedelta(seconds=token_data.get('expires_in', 3600))
-                self.google_linked = True
-                self.save()
-                return self.google_access_token
-            else:
-                self.google_linked = False
-                self.save()
+            if response.status_code != 200:
+                print(f"❌ REFRESH FAILED: {response.status_code} {token_data}")
                 return None
+
+            # ✅ success
+            self.google_access_token = token_data['access_token']
+            self.google_access_token_expiry = now() + timedelta(seconds=token_data.get('expires_in', 3600))
+            self.google_linked = True
+            self.save()
+            return self.google_access_token
 
         except Exception as e:
             print(f"Error refreshing token: {e}")
             self.google_linked = False
             self.save()
             return None
-
+        
     def get_valid_access_token(self):
         if self.google_access_token and self.google_access_token_expiry and self.google_access_token_expiry > now():
             return self.google_access_token

@@ -12,6 +12,10 @@ from accounts.serializers import DepartmentSimpleSerializer, UserSimpleSerialize
 from .serializers import MeetingRemarkSerializer
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
+from datetime import datetime
+import requests
+from django.conf import settings
+
 
 
 User = get_user_model()
@@ -85,7 +89,7 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
         if missing_ids:
             return Response({"detail": f"User(s) {missing_ids} not found."}, status=400)
 
-        # deactivate old
+        # deactivate old participants
         MeetingParticipant.objects.filter(meeting=instance, is_active=True).update(is_active=False)
 
         max_version = MeetingParticipant.objects.filter(meeting=instance).aggregate(Max("version"))["version__max"] or 0
@@ -119,9 +123,12 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
 
         # --- Update Google Calendar ---
         if instance.google_event_id:
-            access_token = request.user.google_access_token
+            print("event_id-------------------",instance.google_event_id)
+            owner = instance.created_by
+            access_token = owner.get_valid_access_token()
+            print("access_token-------------------",access_token)
             if not access_token:
-                return Response({"detail": "User not linked to Google Calendar."}, status=400)
+                return Response({"detail": "Google account not linked or token refresh failed."}, status=400)
 
             attendees = [{"email": p.user.email} for p in instance.participants.filter(is_active=True)]
             attendees.append({"email": "lead.alpha@alphabridgeconsulting.com"})  # always include this
@@ -151,8 +158,13 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
                 json=event_payload,
             )
 
+            # if still unauthorized, try forcing refresh once
             if resp.status_code == 401:
-                access_token = request.user.get_valid_access_token()
+                owner = instance.created_by
+                access_token = owner.get_valid_access_token()
+                if not access_token:
+                    return Response({"detail": "Google token expired and refresh failed."}, status=400)
+
                 headers["Authorization"] = f"Bearer {access_token}"
                 resp = requests.patch(
                     f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{instance.google_event_id}",
@@ -161,14 +173,22 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
                 )
 
             if resp.status_code not in (200, 201):
-                return Response({"detail": "Failed to update Google Calendar event."}, status=400)
+                return Response(
+                    {
+                        "detail": "Failed to update Google Calendar event.",
+                        "status_code": resp.status_code,
+                        "error": resp.json(),
+                    },
+                    status=400
+                )
 
             google_event = resp.json()
             instance.google_meet_link = google_event.get("hangoutLink")
             instance.save()
 
         return super().update(request, *args, **kwargs)
-
+    
+    
 class DepartmentAndUsersView(APIView):
     permission_classes = [IsAuthenticated]
 
