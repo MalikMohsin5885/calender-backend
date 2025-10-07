@@ -94,8 +94,8 @@ class User(AbstractBaseUser, PermissionsMixin):
             return None
 
         data = {
-            'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
-            'client_secret': settings.GOOGLE_OAUTH_CLIENT_SECRET,
+            'client_id': '34902771404-95o6rsaurj49agpr5mihlqthi0d67v7u.apps.googleusercontent.com',
+            'client_secret': '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',
             'refresh_token': self.google_refresh_token,
             'grant_type': 'refresh_token'
         }

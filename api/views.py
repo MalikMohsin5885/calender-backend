@@ -1,7 +1,7 @@
 from rest_framework import generics, status, serializers
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Max
+from django.db.models import Max, Q
 from .models import Meeting, MeetingParticipant
 from .serializers import MeetingSerializer
 from accounts.permissions import IsChief
@@ -62,16 +62,24 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
-
         # --- Permission check ---
+        # Allow anyone to update only the `status` field. For any other changes, require normal permissions.
+        data = request.data or {}
+        only_status_update = set(data.keys()) <= {"status"}
+
         can_update_all = request.user.has_permission("meeting.update_all_meetings")
         can_update_own = request.user.has_permission("meeting.update_own_meetings")
 
-        if not (can_update_all or (can_update_own and instance.created_by == request.user)):
-            return Response(
-                {"detail": "You do not have permission to update this meeting."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        if not only_status_update:
+            if not (can_update_all or (can_update_own and instance.created_by == request.user)):
+                return Response(
+                    {"detail": "You do not have permission to update this meeting."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        # If this request is only updating the meeting status, skip participant handling
+        if only_status_update:
+            return super().update(request, *args, **kwargs)
 
         # --- Handle participants ---
         data = request.data
@@ -89,38 +97,100 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
         if missing_ids:
             return Response({"detail": f"User(s) {missing_ids} not found."}, status=400)
 
-        # deactivate old participants
-        MeetingParticipant.objects.filter(meeting=instance, is_active=True).update(is_active=False)
+        # Permission: only users who can assign participants can modify participants
+        if (to_id or cc_ids) and not request.user.has_permission("meeting.assign_participants"):
+            return Response({"detail": "You do not have permission to assign participants."}, status=403)
 
+        # Get current active participants for comparison
+        current_participants = {
+            p.user_id: p for p in MeetingParticipant.objects.filter(meeting=instance, is_active=True)
+        }
+        current_to_user = next((p.user_id for p in current_participants.values() if p.is_to), None)
+        current_cc_users = {p.user_id for p in current_participants.values() if not p.is_to}
+
+        # Determine which participants need to be changed
+        new_cc_users = set(cc_ids)
+        removed_cc_users = current_cc_users - new_cc_users
+        added_cc_users = new_cc_users - current_cc_users
+
+        # Check for time conflict only if to_user has changed
+        if to_id and to_id != current_to_user:
+            to_user = get_object_or_404(User, id=to_id)
+            if not to_user.google_linked:
+                return Response({"detail": "Requested assignee has not linked Google Calendar."}, status=400)
+            # check conflict: any active 'to' meeting for this user overlapping the updated meeting time
+            conflict_exists = Meeting.objects.filter(
+                participants__user=to_user,
+                date=instance.date,
+                participants__is_to=True,
+                participants__is_active=True
+            ).exclude(id=instance.id).filter(  # Exclude current meeting from conflict check
+                # overlap if start < existing_end and end > existing_start
+                Q(start_time__lt=instance.end_time) & Q(end_time__gt=instance.start_time)
+            ).exists()
+
+            if conflict_exists:
+                return Response({"detail": "Requested assignee has a scheduling conflict for this time slot."}, status=400)
+
+        # Get max version and increment for new records only
         max_version = MeetingParticipant.objects.filter(meeting=instance).aggregate(Max("version"))["version__max"] or 0
         new_version = max_version + 1
 
-        participants = []
+        # First, handle the participants being replaced
+        # These keep their current version but become inactive
+        to_deactivate_ids = removed_cc_users
+        if to_id != current_to_user and current_to_user:
+            to_deactivate_ids.add(current_to_user)
 
-        if to_id:
+        if to_deactivate_ids:
+            MeetingParticipant.objects.filter(
+                meeting=instance,
+                user_id__in=to_deactivate_ids,
+                is_active=True
+            ).update(is_active=False)
+
+        # For continuing participants, we'll update their version while keeping them active
+        continuing_participant_ids = new_cc_users & current_cc_users
+        if to_id and to_id == current_to_user:
+            continuing_participant_ids.add(to_id)
+
+        if continuing_participant_ids:
+            MeetingParticipant.objects.filter(
+                meeting=instance,
+                user_id__in=continuing_participant_ids,
+                is_active=True
+            ).update(version=new_version)
+
+        # Create new records for new participants with the new version
+        new_participants = []
+
+        # Add new TO participant if changed
+        if to_id and to_id != current_to_user:
             to_user = get_object_or_404(User, id=to_id)
-            participants.append(MeetingParticipant(
+            new_participants.append(MeetingParticipant(
                 meeting=instance,
                 user=to_user,
                 is_to=True,
-                version=new_version,
+                version=new_version,  # New participant gets new version
                 is_active=True,
                 updated_by=request.user
             ))
 
-        cc_users = [u for u in users if u.id in cc_ids]
+        # Add new CC participants
+        cc_users = [u for u in users if u.id in added_cc_users]
         for user in cc_users:
-            participants.append(MeetingParticipant(
+            new_participants.append(MeetingParticipant(
                 meeting=instance,
                 user=user,
                 is_to=False,
-                version=new_version,
+                version=new_version,  # New participants get new version
                 is_active=True,
                 updated_by=request.user
             ))
 
-        MeetingParticipant.objects.bulk_create(participants)
-
+        # Bulk create new participants
+        if new_participants:
+            MeetingParticipant.objects.bulk_create(new_participants)
         # --- Update Google Calendar ---
         if instance.google_event_id:
             print("event_id-------------------",instance.google_event_id)
@@ -187,8 +257,9 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
             instance.save()
 
         return super().update(request, *args, **kwargs)
-    
-    
+
+
+
 class DepartmentAndUsersView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -231,15 +302,25 @@ class UserListCreateUpdateView(APIView):
 class MeetingRemarksUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, pk):  # ✅ use POST since remarks are new entries
+    def post(self, request, pk):  
         try:
             meeting = Meeting.objects.get(pk=pk)
         except Meeting.DoesNotExist:
             return Response({"detail": "Meeting not found."}, status=status.HTTP_404_NOT_FOUND)
 
+        # If the user already has a remark for this meeting, update it instead of creating a new one
+        existing_remark = meeting.remarks.filter(user=request.user).first()
+        if existing_remark:
+            serializer = MeetingRemarkSerializer(existing_remark, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # No existing remark -> create a new one
         serializer = MeetingRemarkSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(meeting=meeting, user=request.user)  # ✅ bind meeting & user
+            serializer.save(meeting=meeting, user=request.user)  
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

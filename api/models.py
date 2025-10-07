@@ -1,17 +1,26 @@
 from django.db import models
 from django.conf import settings
 
-
-from django.db import models
-from django.conf import settings
-
 class Meeting(models.Model):
+    MEETING_TYPE_CHOICES = [
+        ('w2', 'W2'),
+        ('contract', 'Contract'),
+    ]
+    # Meeting status choices
+    STATUS_CHOICES = [
+        ('scheduled', 'Scheduled'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+        ('rescheduled', 'Rescheduled'),
+    ]
+    
     title = models.CharField(max_length=150)
     description = models.TextField()
     date = models.DateField()
     start_time = models.TimeField()
     end_time = models.TimeField()
-    meeting_type = models.CharField(max_length=50)
+    meeting_type = models.CharField(max_length=20, choices=MEETING_TYPE_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
     google_event_id = models.CharField(max_length=255, blank=True, null=True)
     google_meet_link = models.URLField(blank=True, null=True)
 

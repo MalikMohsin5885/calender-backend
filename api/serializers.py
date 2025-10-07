@@ -3,6 +3,7 @@ import requests
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.db.models import Max
+from django.db import transaction
 import pytz
 from dotenv import load_dotenv
 
@@ -35,6 +36,8 @@ class MeetingRemarkSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "meeting", "user", "created_at"]
 
 class MeetingSerializer(serializers.ModelSerializer):
+    # Accept raw meeting_type from frontend (e.g. 'C2C', 'W2') and convert in validate()
+    meeting_type = serializers.CharField()
     to_participant = serializers.SerializerMethodField()
     other_participants = serializers.SerializerMethodField()
 
@@ -50,7 +53,7 @@ class MeetingSerializer(serializers.ModelSerializer):
         model = Meeting
         fields = [
             'id', 'title', 'description', 'date', 'start_time', 'end_time',
-            'meeting_type', 'department', 'created_by', 'created_at',
+            'meeting_type', 'department', 'created_by', 'created_at', 'status',
             'to_participant', 'other_participants',
             'remarks', 'jd_link', 'resume_link',
             'to_id', 'cc_ids',
@@ -60,6 +63,45 @@ class MeetingSerializer(serializers.ModelSerializer):
         if value in ["", None]:
             return []
         return value
+    
+    def validate(self, data):
+        """
+        Validate that end_time is after start_time and convert meeting_type
+        """
+        start_time = data.get('start_time')
+        end_time = data.get('end_time')
+        
+        if start_time and end_time:
+            if end_time <= start_time:
+                raise serializers.ValidationError({
+                    'end_time': 'End time must be after start time.'
+                })
+        
+        # Convert meeting_type from frontend format to enum format
+        meeting_type = data.get('meeting_type')
+        if meeting_type:
+            meeting_type_upper = meeting_type.upper()
+            if meeting_type_upper == 'W2':
+                data['meeting_type'] = 'w2'
+            elif meeting_type_upper in ['C2C', '10.99']:
+                data['meeting_type'] = 'contract'
+            else:
+                raise serializers.ValidationError({
+                    'meeting_type': 'Invalid meeting type. Allowed values: W2, C2C, 10.99'
+                })
+
+        # Normalize status input (accept various casings)
+        status_val = data.get('status')
+        if status_val:
+            status_lower = status_val.lower()
+            allowed = {c[0] for c in Meeting.STATUS_CHOICES}
+            if status_lower not in allowed:
+                raise serializers.ValidationError({
+                    'status': f'Invalid status. Allowed: {sorted(list(allowed))}'
+                })
+            data['status'] = status_lower
+        
+        return data
     
     def get_to_participant(self, obj):
         to_part = obj.participants.filter(is_to=True, is_active=True).first()
@@ -76,6 +118,10 @@ class MeetingSerializer(serializers.ModelSerializer):
         request = self.context['request']
         to_id = validated_data.pop('to_id', None)
         cc_ids = validated_data.pop('cc_ids', [])
+
+        # Permission: only users who can assign participants can provide to_id/cc_ids
+        if (to_id) and not request.user.has_permission("meeting.assign_participants"):
+            raise serializers.ValidationError({"detail": "You do not have permission to assign participants."})
 
         validated_data['created_by'] = request.user
 
@@ -125,7 +171,7 @@ class MeetingSerializer(serializers.ModelSerializer):
             to_user = assign_to_user(validated_data)
             if not to_user:
                 raise serializers.ValidationError({
-                    "detail": "No eligible user found for auto-assignment."
+                    "detail": "No eligible user found for Auto assignment."
                 })
             to_id = to_user.id
 
@@ -156,33 +202,38 @@ class MeetingSerializer(serializers.ModelSerializer):
 
 
         # ===== Create Meeting =====
-        meeting = Meeting.objects.create(**validated_data)
+        # Perform DB writes only if Google Calendar event creation succeeds
+        with transaction.atomic():
+            meeting = Meeting.objects.create(**validated_data)
 
-        max_version = MeetingParticipant.objects.filter(meeting=meeting).aggregate(max=Max('version'))['max'] or 0
-        new_version = max_version + 1
+            max_version = MeetingParticipant.objects.filter(meeting=meeting).aggregate(max=Max('version'))['max'] or 0
+            new_version = max_version + 1
 
-        to_user = User.objects.get(id=to_id)
-        MeetingParticipant.objects.create(
-            meeting=meeting,
-            user=to_user,
-            is_to=True,
-            version=new_version,
-            is_active=True,
-            updated_by=request.user
-        )
-
-        cc_users = [u for u in users if u.id in cc_ids]
-        MeetingParticipant.objects.bulk_create([
-            MeetingParticipant(
+            to_user = User.objects.get(id=to_id)
+            # ensure the assigned user has linked Google account
+            if not to_user.google_linked:
+                raise serializers.ValidationError({"detail": "Selected assignee does not have Google Calendar linked."})
+            MeetingParticipant.objects.create(
                 meeting=meeting,
-                user=user,
-                is_to=False,
+                user=to_user,
+                is_to=True,
                 version=new_version,
                 is_active=True,
                 updated_by=request.user
             )
-            for user in cc_users
-        ])
+
+            cc_users = [u for u in users if u.id in cc_ids]
+            MeetingParticipant.objects.bulk_create([
+                MeetingParticipant(
+                    meeting=meeting,
+                    user=user,
+                    is_to=False,
+                    version=new_version,
+                    is_active=True,
+                    updated_by=request.user
+                )
+                for user in cc_users
+            ])
 
         # Google Calender Integration
 

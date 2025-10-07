@@ -99,7 +99,7 @@ class RolesDepartmentsSupervisorsView(APIView):
         # Case-insensitive role match to avoid exact string mismatch issues
         users = User.objects.filter(
             Q(role__name__iexact="Chief") |
-            Q(role__name__iexact="BD_Supervisor")
+            Q(role__name__iexact="BD_Lead")
         )
 
         return Response({
