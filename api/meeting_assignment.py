@@ -108,8 +108,8 @@ def assign_to_user(meeting_data):
 
     print(f"[assign_to_user] after type filter ({meeting_type}):", eligibilities.count())
 
-    # Only consider users who have linked their Google account
-    eligibilities = eligibilities.filter(user__google_linked=True)
+    # Only consider users who have linked their Google account and have the correct roles
+    eligibilities = eligibilities.filter(user__google_linked=True, user__role__name__in=["Closer_Lead", "Closer"])
 
     if not eligibilities.exists():
         return None
@@ -136,8 +136,8 @@ def assign_to_user(meeting_data):
         # Tie-breaker: meeting_count * priority
         tie_breaker = meeting_count * elig.priority
 
-    scored_users.append((user, fairness_score, tie_breaker, elig.priority))
-    print(f"[assign_to_user] user={user.email} fairness_score={fairness_score} tie_breaker={tie_breaker}")
+        scored_users.append((user, fairness_score, tie_breaker, elig.priority))
+        print(f"[assign_to_user] user={user.email} fairness_score={fairness_score} tie_breaker={tie_breaker}")
 
     # --- Multi-level sort ---
     # 1. Lowest fairness_score wins

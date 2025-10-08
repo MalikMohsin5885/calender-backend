@@ -135,36 +135,6 @@ class MeetingSerializer(serializers.ModelSerializer):
         missing_ids = all_ids - found_ids
         if missing_ids:
             raise serializers.ValidationError({"detail": f"User(s) {missing_ids} not found."})
-
-        # # Auto-assign to_id if not provided
-        # if not to_id:
-        #     dept_users = User.objects.filter(
-        #         department=validated_data['department'],
-        #         priority__isnull=False,
-        #         role__name="Closer"
-        #     ).exclude(id__in=cc_ids)
-        #     dept_users = dept_users.order_by('priority')
-
-        #     if not dept_users.exists():
-        #         raise serializers.ValidationError({
-        #             "detail": "No eligible 'Closer' found in department for auto-assign."
-        #         })
-
-        #     to_user = dept_users.first()
-        #     to_id = to_user.id
-
-        #     # Add to_user's supervisor to CC if exists and not self
-        #     if to_user.supervisor and to_user.supervisor.id != to_user.id:
-        #         cc_ids.append(to_user.supervisor.id)
-
-        #     all_ids = set(filter(None, [to_id] + cc_ids))
-        #     users = User.objects.filter(id__in=all_ids)
-        #     found_ids = {u.id for u in users}
-        #     missing_ids = all_ids - found_ids
-        #     if missing_ids:
-        #         raise serializers.ValidationError({
-        #             "detail": f"User(s) {missing_ids} not found after auto-assign."
-        #         })
         
         # Auto-assign "to" user if not provided
         if not to_id:
