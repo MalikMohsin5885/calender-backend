@@ -9,6 +9,8 @@ scripts:
     - python manage.py migrate
   seed_db:
     - python manage.py seed_db
+  seed_dummy_users:
+    - python manage.py dummy_users
   freeze_requirements:
     - uv pip freeze > requirements.txt
   create_superuser:

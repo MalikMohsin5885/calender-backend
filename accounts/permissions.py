@@ -1,11 +1,11 @@
 from rest_framework.permissions import BasePermission
 
-class IsAdministrator(BasePermission):
+class IsChief(BasePermission):
     def has_permission(self, request, view):
         return bool(
             request.user and
             request.user.is_authenticated and
-            getattr(request.user.role, "name", "").lower() == "administrator"
+            getattr(request.user.role, "name", "").lower() == "chief"
         )
 
 
