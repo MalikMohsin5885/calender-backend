@@ -111,6 +111,10 @@ def assign_to_user(meeting_data):
     # Only consider users who have linked their Google account and have the correct roles
     eligibilities = eligibilities.filter(user__google_linked=True, user__role__name__in=["Closer_Lead", "Closer"])
 
+    # Exclude specific internal lead account from being assigned
+    EXCLUDED_EMAIL = "lead.alpha@alphabridgeconsulting.com"
+    eligibilities = eligibilities.exclude(user__email__iexact=EXCLUDED_EMAIL)
+
     if not eligibilities.exists():
         return None
 

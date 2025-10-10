@@ -20,6 +20,7 @@ load_dotenv()
 
 # Parse DATABASE_URL connection strings
 import dj_database_url
+import sys
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -34,7 +35,17 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-1pm6xk$%cv4_c1dvhac
 DEBUG = os.getenv('DJANGO_DEBUG', 'False').lower() in ('1', 'true', 'yes')
 
 # Allowed hosts for deployment
-ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', '').split(',') if os.getenv('DJANGO_ALLOWED_HOSTS') else []
+if os.getenv('DJANGO_ALLOWED_HOSTS'):
+    ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS').split(',')
+else:
+    # Provide sane defaults during development. In production set DJANGO_ALLOWED_HOSTS.
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1'] if DEBUG else []
+
+# If running the development server (manage.py runserver or rav run server), allow local hosts
+if any('runserver' in arg for arg in sys.argv) or any('rav' in arg for arg in sys.argv):
+    for h in ('127.0.0.1', 'localhost', '0.0.0.0'):
+        if h not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(h)
 
 # Deployment behind a subpath (e.g., served at /backend)
 FORCE_SCRIPT_NAME = os.getenv('FORCE_SCRIPT_NAME', None)

@@ -7,10 +7,11 @@ User = get_user_model()
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
     role_id = serializers.IntegerField(write_only=True)
-    department_id = serializers.IntegerField(write_only=True)
+    # department may be omitted or null when creating a user
+    department_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     supervisor_id = serializers.IntegerField(required=False, allow_null=True)
 
-    # One MeetingEligibility object
+    # One MeetingEligibility object (optional)
     meeting_eligibility = serializers.DictField(write_only=True, required=False)
 
     class Meta:
@@ -23,7 +24,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         role_id = validated_data.pop("role_id")
-        department_id = validated_data.pop("department_id")
+        department_id = validated_data.pop("department_id", None)
         supervisor_id = validated_data.pop("supervisor_id", None)
         eligibility_data = validated_data.pop("meeting_eligibility", None)
         password = validated_data.pop("password")
@@ -35,17 +36,20 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"role_id": "Invalid role ID"})
 
         # ----- Department -----
-        try:
-            if role.name == "BD":
-                department, _ = Department.objects.get_or_create(name="BD")
-            else:
+        # Determine department: allow None (no department) for non-required departments
+        department = None
+        # If role is BD or BD_Lead, force department to BD
+        if role.name.upper() in ("BD", "BD_LEAD"):
+            department, _ = Department.objects.get_or_create(name="BD")
+        elif department_id:
+            try:
                 department = Department.objects.get(id=department_id)
                 if department.name == "Business Development":
                     raise serializers.ValidationError(
                         {"department_id": "Only BD role can have the Business Development department"}
                     )
-        except Department.DoesNotExist:
-            raise serializers.ValidationError({"department_id": "Invalid department ID"})
+            except Department.DoesNotExist:
+                raise serializers.ValidationError({"department_id": "Invalid department ID"})
 
         # ----- Supervisor -----
         supervisor = None
@@ -67,32 +71,30 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         # ----- Create One MeetingEligibility -----
         if eligibility_data:
-            department_ids = eligibility_data.get("departments", [])
+            department_items = eligibility_data.get("departments", []) or []
             priority = eligibility_data.get("priority")
             can_take_contract = eligibility_data.get("can_take_contract", True)
             can_take_w2 = eligibility_data.get("can_take_w2", True)
 
-           # Validate departments by name
-            valid_names = list(
-                Department.objects.filter(name__in=department_ids).values_list("name", flat=True)
-            )
-
-            # Check if any submitted names are invalid
-            invalid_names = set(department_ids) - set(valid_names)
-            if invalid_names:
-                raise serializers.ValidationError(
-                    {"meeting_eligibility": f"Invalid department names: {list(invalid_names)}"}
-                )
-
-            # Convert valid names into ids for saving
-            valid_ids = list(
-                Department.objects.filter(name__in=department_ids).values_list("id", flat=True)
-            )
-
+            # Accept either list of department IDs (ints) or names (strs). Empty list is allowed.
+            dept_ids = []
+            if department_items:
+                # if items are ints, assume they are IDs
+                if all(isinstance(x, int) for x in department_items):
+                    dept_ids = list(Department.objects.filter(id__in=department_items).values_list("id", flat=True))
+                    if len(dept_ids) != len(department_items):
+                        raise serializers.ValidationError({"meeting_eligibility": "One or more departments are invalid."})
+                else:
+                    # treat as names
+                    valid_names = list(Department.objects.filter(name__in=department_items).values_list("name", flat=True))
+                    invalid_names = set(department_items) - set(valid_names)
+                    if invalid_names:
+                        raise serializers.ValidationError({"meeting_eligibility": f"Invalid department names: {list(invalid_names)}"})
+                    dept_ids = list(Department.objects.filter(name__in=department_items).values_list("id", flat=True))
 
             MeetingEligibility.objects.create(
                 user=user,
-                departments=valid_ids,
+                departments=dept_ids,
                 priority=priority,
                 can_take_contract=can_take_contract,
                 can_take_w2=can_take_w2,
@@ -184,9 +186,15 @@ class MeetingEligibilitySerializer(serializers.ModelSerializer):
 
 
 class UserListUpdateSerializer(serializers.ModelSerializer):
+    # Readable fields
     role = serializers.CharField(source='role.name', read_only=True)
     department = serializers.CharField(source='department.name', read_only=True)
     supervisor = serializers.CharField(source='supervisor.name', read_only=True)
+
+    # Writable ids for updating relations
+    role_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    department_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    supervisor_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
 
     meeting_eligibilities = MeetingEligibilitySerializer(many=True)
 
@@ -195,9 +203,10 @@ class UserListUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'email', 'password',
             'role', 'department', 'supervisor',
+            'role_id', 'department_id', 'supervisor_id',
             'is_active', 'meeting_eligibilities'
         ]
-        read_only_fields = ['id', 'role', 'department', 'supervisor']
+        read_only_fields = ['id']
         extra_kwargs = {
             'password': {'write_only': True, 'required': False}
         }
@@ -205,7 +214,40 @@ class UserListUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         eligibilities_data = validated_data.pop('meeting_eligibilities', None)
 
-        # Update user fields
+        # Handle relational ids explicitly
+        role_id = validated_data.pop('role_id', None)
+        department_id = validated_data.pop('department_id', None)
+        supervisor_id = validated_data.pop('supervisor_id', None)
+
+        if role_id is not None:
+            try:
+                instance.role = Role.objects.get(id=role_id)
+            except Role.DoesNotExist:
+                raise serializers.ValidationError({"role_id": "Invalid role ID"})
+
+        if department_id is not None:
+            # If role was changed to BD or BD_Lead, force department to BD
+            if instance.role and instance.role.name.upper() in ("BD", "BD_LEAD"):
+                instance.department, _ = Department.objects.get_or_create(name="BD")
+            else:
+                if department_id == None:
+                    instance.department = None
+                else:
+                    try:
+                        instance.department = Department.objects.get(id=department_id)
+                    except Department.DoesNotExist:
+                        raise serializers.ValidationError({"department_id": "Invalid department ID"})
+
+        if supervisor_id is not None:
+            if supervisor_id == None:
+                instance.supervisor = None
+            else:
+                try:
+                    instance.supervisor = User.objects.get(id=supervisor_id)
+                except User.DoesNotExist:
+                    raise serializers.ValidationError({"supervisor_id": "Invalid supervisor ID"})
+
+        # Update other simple fields
         password = validated_data.pop('password', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
