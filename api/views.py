@@ -15,6 +15,8 @@ from django.shortcuts import get_object_or_404
 from datetime import datetime
 import requests
 from django.conf import settings
+from rest_framework.permissions import AllowAny
+from django.db import connection
 
 
 
@@ -324,3 +326,28 @@ class MeetingRemarksUpdateView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class HealthCheckView(APIView):
+    """Lightweight health check: checks DB connectivity and returns service info."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        # Basic DB check
+        db_ok = False
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+            db_ok = True
+        except Exception as e:
+            db_ok = False
+
+        data = {
+            "status": "ok" if db_ok else "error",
+            "database": "ok" if db_ok else "error",
+            "debug": settings.DEBUG,
+            "timestamp": datetime.utcnow().isoformat() + 'Z'
+        }
+        status_code = 200 if db_ok else 500
+        return Response(data, status=status_code)

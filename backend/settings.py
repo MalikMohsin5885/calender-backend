@@ -9,23 +9,36 @@ https://docs.djangoproject.com/en/5.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
-
 from pathlib import Path
-from datetime import timedelta
 import os
+from datetime import timedelta
+import pymysql
+pymysql.install_as_MySQLdb()
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Deployment behind a subpath (served at /backend)
+FORCE_SCRIPT_NAME = os.getenv('FORCE_SCRIPT_NAME', '/backend')
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-1pm6xk$%cv4_c1dvhac4s219be(7s8s3dh4hz0tmwpyk!f+(2v'
+# Load sensitive settings from environment variables for production use
+from dotenv import load_dotenv
+load_dotenv()
 
-DEBUG = True
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-1pm6xk$%cv4_c1dvhac4s219be(7s8s3dh4hz0tmwpyk!f+(2v')
 
-ALLOWED_HOSTS = []
+# Toggle debug via env var (default False in production)
+DEBUG = os.getenv('DJANGO_DEBUG', 'False').lower() in ('1', 'true', 'yes')
+
+# Allowed hosts for deployment: set via env var as comma-separated list
+ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', 'sadataglobal.com,www.sadataglobal.com').split(',')
 
 
 # Application definition
@@ -77,14 +90,15 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 
 
+# Database config: prefer DATABASE_URL (e.g., Neon), otherwise fall back to individual env vars
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'alphabridge_db',  # Your database name
-        'USER': 'alphabridge_user',  # Your PostgreSQL username
-        'PASSWORD': 'your_secure_password',  # Your PostgreSQL password
-        'HOST': 'localhost',  # Set to the database host
-        'PORT': '5432',  # Default PostgreSQL port
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.getenv('MYSQL_DB', 'alphabridge_db'),
+        'USER': os.getenv('MYSQL_USER', 'root'),
+        'PASSWORD': os.getenv('MYSQL_PASSWORD', 'Mohsin'),
+        'HOST': os.getenv('MYSQL_HOST', 'localhost'),
+        'PORT': os.getenv('MYSQL_PORT', '3306'),
     }
 }
 
@@ -123,7 +137,10 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+
+# Static & media (served under /backend/ when deployed behind a subpath)
+STATIC_URL = '/backend/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -131,15 +148,23 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-# CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-]
-
+# CORS: allow origins via env (comma-separated), fallback to production domains
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'https://sadataglobal.com,https://www.sadataglobal.com').split(',')
 CORS_ALLOW_CREDENTIALS = True
-AUTH_USER_MODEL = "accounts.User"
-USERNAME_FIELD = 'email'
 
+# Media settings (served under /backend/)
+MEDIA_URL = '/backend/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Cookie paths and domains when running under a subpath
+CSRF_COOKIE_PATH = '/backend/'
+SESSION_COOKIE_PATH = '/backend/'
+CSRF_COOKIE_DOMAIN = os.getenv('CSRF_COOKIE_DOMAIN', 'sadataglobal.com')
+SESSION_COOKIE_DOMAIN = os.getenv('SESSION_COOKIE_DOMAIN', 'sadataglobal.com')
+
+AUTH_USER_MODEL = "accounts.User"
+
+# REST framework + JWT (minimal required)
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -154,6 +179,23 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
+# Minimal Google OAuth settings from environment
 
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+# Default redirect for prod behind /backend
+GOOGLE_OAUTH_REDIRECT_URI = os.getenv('GOOGLE_OAUTH_REDIRECT_URI', os.getenv('GOOGLE_OAUTH_CALLBACK_URL', 'https://sadataglobal.com/backend/auth/google/callback/'))
+
+# Email credentials (optional, read from env if provided)
+EMAIL_HOST_USER = os.getenv('GMAIL_USER')
+EMAIL_HOST_PASSWORD = os.getenv('GMAIL_PASSWORD')
+
+# Additional security settings applied only in production
+if not DEBUG:
+    # cPanel or other fronting proxy might already handle SSL termination
+    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'False').lower() in ('1', 'true', 'yes')
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'

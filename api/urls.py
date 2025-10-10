@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import MeetingListCreateView, DepartmentAndUsersView, MeetingUpdateView,UserListCreateUpdateView, MeetingRemarksUpdateView
+from .views import MeetingListCreateView, DepartmentAndUsersView, MeetingUpdateView,UserListCreateUpdateView, MeetingRemarksUpdateView, HealthCheckView
 from accounts.views import RolePermissionManagerView, RolesDepartmentsSupervisorsView
 urlpatterns = [
     path("meetings/", MeetingListCreateView.as_view(), name="meeting-list"),
@@ -11,4 +11,5 @@ urlpatterns = [
     path('users/<int:pk>/', UserListCreateUpdateView.as_view(), name='user-update'),
     path('roles-permissions/', RolePermissionManagerView.as_view(), name='roles-permissions'),
     path("roles-departments-supervisors/", RolesDepartmentsSupervisorsView.as_view(), name="roles-departments-supervisors"),
+    path("health/", HealthCheckView.as_view(), name="health-check"),
 ]

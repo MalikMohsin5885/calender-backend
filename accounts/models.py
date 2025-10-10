@@ -1,7 +1,6 @@
 from datetime import timedelta
 from django.conf import settings
 from django.db import models
-from django.contrib.postgres.fields import ArrayField  # Postgres-specific
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils.timezone import now
 import requests
@@ -93,9 +92,10 @@ class User(AbstractBaseUser, PermissionsMixin):
             self.save()
             return None
 
+        from django.conf import settings
         data = {
-            'client_id': '34902771404-95o6rsaurj49agpr5mihlqthi0d67v7u.apps.googleusercontent.com',
-            'client_secret': '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',
+            'client_id': getattr(settings, 'GOOGLE_OAUTH_CLIENT_ID', ''),
+            'client_secret': getattr(settings, 'GOOGLE_OAUTH_CLIENT_SECRET', ''),
             'refresh_token': self.google_refresh_token,
             'grant_type': 'refresh_token'
         }
@@ -128,7 +128,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 class MeetingEligibility(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="meeting_eligibilities")
-    departments = ArrayField(models.IntegerField(), default=list, help_text="List of Department IDs user is eligible for")
+    # Use JSONField for portability between Postgres and MySQL
+    departments = models.JSONField(default=list, help_text="List of Department IDs user is eligible for")
     
     can_take_contract = models.BooleanField(default=True)
     can_take_w2 = models.BooleanField(default=True)
