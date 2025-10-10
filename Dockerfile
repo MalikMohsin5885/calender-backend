@@ -56,9 +56,9 @@ USER django
 # Expose port (Cloud Run uses PORT env variable, defaults to 8080)
 EXPOSE 8080
 
-# Health check
+# Health check (use stdlib urllib so we don't depend on third-party 'requests' at probe time)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8080/api/health/', timeout=2)" || exit 1
+    CMD /bin/sh -c 'python - <<PY\nimport urllib.request, sys\ntry:\n    urllib.request.urlopen("http://127.0.0.1:8080/api/health/", timeout=2)\n    sys.exit(0)\nexcept Exception:\n    sys.exit(1)\nPY'
 
 # Use gunicorn for production
 CMD gunicorn backend.wsgi:application \
