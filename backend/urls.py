@@ -17,10 +17,12 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from api.views import HealthCheckView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("auth/", include("accounts.urls")),
-
     path('api/', include('api.urls')),
+    # root-level health check (used by GCP probes)
+    path('health/', HealthCheckView.as_view(), name='health-root'),
 ]
