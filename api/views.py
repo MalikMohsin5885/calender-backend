@@ -15,6 +15,8 @@ from django.shortcuts import get_object_or_404
 from datetime import datetime
 import requests
 from django.conf import settings
+from django.db import connection
+from django.utils import timezone
 
 
 
@@ -193,6 +195,8 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
             MeetingParticipant.objects.bulk_create(new_participants)
         # --- Update Google Calendar ---
         if instance.google_event_id:
+            from django.conf import settings
+            
             print("event_id-------------------",instance.google_event_id)
             owner = instance.created_by
             access_token = owner.get_valid_access_token()
@@ -201,7 +205,9 @@ class MeetingUpdateView(generics.RetrieveUpdateAPIView):
                 return Response({"detail": "Google account not linked or token refresh failed."}, status=400)
 
             attendees = [{"email": p.user.email} for p in instance.participants.filter(is_active=True)]
-            attendees.append({"email": "lead.alpha@alphabridgeconsulting.com"})  # always include this
+            # Add default attendee if configured
+            if settings.DEFAULT_MEETING_ATTENDEE:
+                attendees.append({"email": settings.DEFAULT_MEETING_ATTENDEE})
 
             event_payload = {
                 "summary": data.get("title", instance.title),
@@ -324,3 +330,21 @@ class MeetingRemarksUpdateView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class HealthCheckView(APIView):
+    """Lightweight health check that verifies DB connectivity.
+
+    Returns 200 OK when a simple SELECT 1 succeeds, otherwise 503 Service Unavailable.
+    """
+    permission_classes = []  # allow any
+
+    def get(self, request):
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+        except Exception as exc:
+            return Response({"status": "unhealthy", "error": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        return Response({"status": "ok", "timestamp": timezone.now()}, status=status.HTTP_200_OK)

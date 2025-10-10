@@ -228,6 +228,8 @@ class MeetingSerializer(serializers.ModelSerializer):
         end_pst = end_est.astimezone(pst)
 
 
+        from django.conf import settings
+        
         event_payload = {
             "summary": meeting.title,
             # "location": "Google Meet",
@@ -242,7 +244,7 @@ class MeetingSerializer(serializers.ModelSerializer):
                 # "dateTime": end_est.isoformat(),
                 "timeZone": "Asia/Karachi",
             },
-            "attendees": [{"email": p.user.email} for p in meeting.participants.all()]+[{"email": "lead.alpha@alphabridgeconsulting.com"}],
+            "attendees": [{"email": p.user.email} for p in meeting.participants.all()],
             "conferenceData": {
                 "createRequest": {
                     "requestId": f"meeting-{meeting.id}",
@@ -251,6 +253,10 @@ class MeetingSerializer(serializers.ModelSerializer):
             },
             "attachments" : []
         }
+        
+        # Add default attendee if configured
+        if settings.DEFAULT_MEETING_ATTENDEE:
+            event_payload["attendees"].append({"email": settings.DEFAULT_MEETING_ATTENDEE})
         if meeting.jd_link:
             event_payload["attachments"].append({
                 "fileUrl": meeting.jd_link,

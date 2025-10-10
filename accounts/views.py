@@ -112,15 +112,17 @@ class GoogleAuthCodeView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
+        from django.conf import settings
+        
         authorization_code = request.data.get("code")
         
         if not authorization_code:
             return Response({"error": "code is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Google OAuth details (from your GCP JSON)
-        client_id = "34902771404-95o6rsaurj49agpr5mihlqthi0d67v7u.apps.googleusercontent.com"
-        client_secret = "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"
-        redirect_uri = "http://localhost:8000/auth/google/callback/"  # must match GCP
+        # Google OAuth details from settings
+        client_id = settings.GOOGLE_OAUTH_CLIENT_ID
+        client_secret = settings.GOOGLE_OAUTH_CLIENT_SECRET
+        redirect_uri = settings.GOOGLE_OAUTH_REDIRECT_URI
 
         # Exchange code for tokens
         token_url = "https://oauth2.googleapis.com/token"

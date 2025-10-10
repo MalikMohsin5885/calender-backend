@@ -88,14 +88,16 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.save()
 
     def refresh_google_token(self):
+        from django.conf import settings
+        
         if not self.google_refresh_token:
             self.google_linked = False
             self.save()
             return None
 
         data = {
-            'client_id': '34902771404-95o6rsaurj49agpr5mihlqthi0d67v7u.apps.googleusercontent.com',
-            'client_secret': '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',
+            'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
+            'client_secret': settings.GOOGLE_OAUTH_CLIENT_SECRET,
             'refresh_token': self.google_refresh_token,
             'grant_type': 'refresh_token'
         }
